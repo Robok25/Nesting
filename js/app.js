@@ -43,8 +43,8 @@ function input(type, value, onInput, extra = {}) {
   return n;
 }
 
-function dropdown(value, options, onChange, placeholder = 'Seleccionar...') {
-  const n = el('select');
+function dropdown(value, options, onChange, placeholder = 'Seleccionar...', disabled = false) {
+  const n = el('select', { disabled });
   n.append(el('option', { value: '', textContent: placeholder }));
   options.forEach((option) => n.append(el('option', { value: option, textContent: option })));
   if (value && !options.includes(value)) {
@@ -112,8 +112,8 @@ function renderPieces() {
         el('td', { textContent: f.name }),
         el('td', { textContent: f.geom ? Math.round(f.geom.area).toLocaleString() : '—' }),
         el('td', {}, [input('number', f.qty, (v) => (f.qty = Math.max(0, parseInt(v, 10) || 0)), { min: 0, step: 1, disabled })]),
-        el('td', {}, [dropdown(f.material, MATERIAL_OPTIONS, (v) => (f.material = v), 'Material...')]),
-        el('td', {}, [dropdown(f.calibre, CALIBRE_OPTIONS, (v) => (f.calibre = v), 'Calibre...')]),
+        el('td', {}, [dropdown(f.material, MATERIAL_OPTIONS, (v) => (f.material = v), 'Material...', disabled)]),
+        el('td', {}, [dropdown(f.calibre, CALIBRE_OPTIONS, (v) => (f.calibre = v), 'Calibre...', disabled)]),
         el('td', { textContent: f.error ? 'Error: ' + f.error : 'OK', className: f.error ? 'err' : 'ok' }),
         el('td', {}, [el('button', { type: 'button', className: 'danger small', textContent: 'Quitar', onclick: () => {
           if (confirm(`¿Quitar el archivo "${f.name}" de la lista?`)) { files = files.filter((item) => item !== f); renderPieces(); }
