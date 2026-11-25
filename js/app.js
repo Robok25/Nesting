@@ -416,7 +416,7 @@ function exportPDF() {
 $('finalize').addEventListener('click', () => {
   if (!result) return;
   exportPDF();
-  $('status').textContent = 'PDF generado. El cálculo permanece guardado en esta sesión; puedes seguir editando y recalcular.';
+  $('pdfStatus').textContent = 'PDF generado. El cálculo permanece guardado en esta sesión; puedes seguir editando y recalcular.';
 });
 
 $('discard').addEventListener('click', () => {
