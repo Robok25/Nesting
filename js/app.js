@@ -42,10 +42,8 @@ $('dxf').addEventListener('change', async (e) => {
     const index = files.findIndex((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
     let previous = null;
     if (index >= 0) {
-      if (!confirm(`Ya existe "${name}".\
-\
-¿Deseas reemplazar el DXF existente?\
-Aceptar = reemplazar · Cancelar = omitir este archivo`)) { cancelled++; continue; }
+      const answer = confirm('Ya existe "' + name + '".\n\n¿Deseas reemplazar el DXF existente?\nAceptar = reemplazar · Cancelar = omitir este archivo');
+      if (!answer) { cancelled++; continue; }
       previous = files[index];
     }
     let entry;
