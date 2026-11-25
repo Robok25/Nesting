@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1f4e79">
+  <title>Nesting de láminas</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f4f6f8; color: #222; }
+    h1 { font-size: 1.4rem; margin: 0 0 12px; }
+    h2 { font-size: 1.1rem; margin: 16px 0 8px; }
+    .card { background: #fff; border-radius: 10px; padding: 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+    label { display: flex; flex-direction: column; font-size: .85rem; gap: 4px; }
+    input[type=number], input[type=text] { padding: 8px; font-size: 1rem; border: 1px solid #bbb; border-radius: 6px; }
+    input[type=file] { font-size: .9rem; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #eee; }
+    td input { width: 80px; }
+    button { padding: 10px 14px; font-size: 1rem; border: 0; border-radius: 8px; background: #1f4e79; color: #fff; margin: 4px 4px 4px 0; }
+    button:disabled { background: #9aa; }
+    button.secondary { background: #777; }
+    button.danger { background: #a33; }
+    .err { color: #b00020; }
+    .ok { color: #2e7d32; }
+    .big { font-size: 1.6rem; font-weight: bold; margin: 4px 0; }
+    .status { color: #555; font-size: .9rem; min-height: 1.2em; }
+    svg.sheet { width: 100%; height: auto; border: 1px solid #ddd; background: #fff; margin-bottom: 14px; }
+    svg .bg { fill: #fff; stroke: #333; stroke-width: 2; vector-effect: non-scaling-stroke; }
+    svg .piece { fill: rgba(31,78,121,.18); stroke: #1f4e79; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+    svg .label { font-family: sans-serif; fill: #222; text-anchor: middle; }
+  </style>
+</head>
+<body>
+  <h1>Nesting de láminas</h1>
+
+  <div class="card">
+    <h2>1. Lámina y parámetros</h2>
+    <div class="grid">
+      <label>Calibre / material <input id="calibre" type="text" placeholder="Ej. CAL 16 negro"></label>
+      <label>Ancho lámina (mm) <input id="W" type="number" value="1220" min="1"></label>
+      <label>Alto lámina (mm) <input id="H" type="number" value="2440" min="1"></label>
+      <label>Margen de lámina (mm) <input id="margin" type="number" value="10" min="0"></label>
+      <label>Gap entre piezas (mm) <input id="gap" type="number" value="3" min="0" step="0.1"></label>
+      <label>Ángulos permitidos <input id="angles" type="text" value="0,45,90" placeholder="0,45,90 o 0,15,30,..."></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. Piezas (DXF)</h2>
+    <input id="dxf" type="file" accept=".dxf" multiple>
+    <div id="piecesBox" hidden>
+      <table>
+        <thead><tr><th>Pieza</th><th>Área mm²</th><th>Cantidad</th><th>Estado</th></tr></thead>
+        <tbody id="pieces"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Calcular</h2>
+    <button id="calc">Calcular nesting</button>
+    <button id="finalize" disabled>Finalizar cálculo y generar PDF</button>
+    <button id="discard" class="danger">Descartar</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>Resultado</h2>
+    <div id="summary"></div>
+    <div id="results"></div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
