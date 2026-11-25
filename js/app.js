@@ -25,9 +25,20 @@ let files = [];   // { name, qty, material, calibre, geom, error }
 let defs = [];    // { id, material, calibre, W, H, margin, gap, angles }
 let result = null;
 let nextId = 1;
+let unitMode = 'mm'; // La unidad es única para todos los DXF y láminas de esta sesión.
 
+const unitLabel = () => unitMode === 'in' ? 'in' : 'mm';
+const areaUnitLabel = () => unitMode === 'in' ? 'in²' : 'mm²';
+const unitToMm = () => unitMode === 'in' ? 25.4 : 1;
 const keyOf = (m, c) => `${m.trim().toUpperCase()}|${c.trim().toUpperCase()}`;
-const defLabel = (d) => `${d.material.trim()} · ${d.calibre.trim()} · ${d.W} × ${d.H} mm`;
+const defLabel = (d) => `${d.material.trim()} · ${d.calibre.trim()} · ${d.W} × ${d.H} ${unitLabel()}`;
+
+function updateUnitsUI() {
+  const u = unitLabel();
+  $('areaHeader').textContent = `Área ${areaUnitLabel()}`;
+  $('units').disabled = files.length > 0 || defs.length > 0;
+  document.querySelectorAll('[data-unit-label]').forEach((n) => { n.textContent = u; });
+}
 const parseAngles = (s) => s.split(',').map(Number);
 
 function el(tag, props = {}, children = []) {
@@ -92,6 +103,7 @@ $('dxf').addEventListener('change', async (e) => {
     if (index >= 0) { files[index] = entry; replaced++; } else { files.push(entry); added++; }
   }
   files.sort((x, y) => x.name.localeCompare(y.name, 'es', { numeric: true }));
+  updateUnitsUI();
   const messages = [];
   if (added) messages.push(`${added} agregado(s)`);
   if (replaced) messages.push(`${replaced} reemplazado(s)`);
@@ -124,8 +136,21 @@ function renderPieces() {
 }
 
 // ---------- 3. Láminas disponibles ----------
+$('units').addEventListener('change', () => {
+  if (files.length || defs.length) {
+    alert('Para cambiar de unidad debes iniciar un cálculo nuevo. Todos los archivos y láminas deben usar la misma unidad.');
+    $('units').value = unitMode;
+    return;
+  }
+  unitMode = $('units').value === 'in' ? 'in' : 'mm';
+  updateUnitsUI();
+  renderDefs();
+});
+
 $('addDef').addEventListener('click', () => {
-  defs.push({ id: nextId++, material: '', calibre: '', W: 1220, H: 2440, margin: 10, gap: 3, angles: '0,90' });
+  const inch = unitMode === 'in';
+  defs.push({ id: nextId++, material: '', calibre: '', W: inch ? 48 : 1220, H: inch ? 96 : 2440, margin: inch ? 0.4 : 10, gap: inch ? 0.12 : 3, angles: '0,90' });
+  updateUnitsUI();
   renderDefs();
 });
 
@@ -142,10 +167,10 @@ function renderDefs() {
         el('div', { className: 'grid' }, [
           el('label', {}, [el('span', { textContent: 'Material' }), dropdown(d.material, MATERIAL_OPTIONS, (v) => (d.material = v), 'Material...')]),
           el('label', {}, [el('span', { textContent: 'Calibre' }), dropdown(d.calibre, CALIBRE_OPTIONS, (v) => (d.calibre = v), 'Calibre...')]),
-          el('label', {}, [el('span', { textContent: 'Ancho (mm)' }), input('number', d.W, (v) => (d.W = v), { min: 1 })]),
-          el('label', {}, [el('span', { textContent: 'Alto (mm)' }), input('number', d.H, (v) => (d.H = v), { min: 1 })]),
-          el('label', {}, [el('span', { textContent: 'Margen (mm)' }), input('number', d.margin, (v) => (d.margin = v), { min: 0 })]),
-          el('label', {}, [el('span', { textContent: 'Gap (mm)' }), input('number', d.gap, (v) => (d.gap = v), { min: 0, step: 0.1 })]),
+          el('label', {}, [el('span', { textContent: `Ancho (${unitLabel()})` }), input('number', d.W, (v) => (d.W = v), { min: 1, step: 'any' })]),
+          el('label', {}, [el('span', { textContent: `Alto (${unitLabel()})` }), input('number', d.H, (v) => (d.H = v), { min: 1, step: 'any' })]),
+          el('label', {}, [el('span', { textContent: `Margen (${unitLabel()})` }), input('number', d.margin, (v) => (d.margin = v), { min: 0, step: 'any' })]),
+          el('label', {}, [el('span', { textContent: `Gap (${unitLabel()})` }), input('number', d.gap, (v) => (d.gap = v), { min: 0, step: 'any' })]),
           el('label', {}, [el('span', { textContent: 'Rotaciones' }), angles]),
         ]),
         el('button', {
@@ -156,6 +181,7 @@ function renderDefs() {
       ])
     );
   });
+  updateUnitsUI();
 }
 
 // ---------- 4. Cálculo ----------
@@ -270,6 +296,7 @@ function renderResult() {
     });
   }
   $('finalize').disabled = false;
+  $('exportDxf').disabled = false;
   showPanel('resultPanel');
 }
 
@@ -473,9 +500,14 @@ function clearAll(message) {
   $('pieces').replaceChildren();
   $('piecesBox').hidden = true;
   $('defs').replaceChildren();
+  nextId = 1;
   $('results').replaceChildren();
   $('summary').replaceChildren();
   $('finalize').disabled = true;
+  $('exportDxf').disabled = true;
+  unitMode = 'mm';
+  $('units').value = 'mm';
+  updateUnitsUI();
   $('status').textContent = message;
   showPanel('filesPanel');
 }
