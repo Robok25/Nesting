@@ -13,13 +13,12 @@ Aplicación web para calcular cuántas láminas necesitas para cortar un conjunt
 ## Entrada DXF
 
 - Unidades: milímetros.
-- Se leen LINE, LWPOLYLINE, CIRCLE y ARC. Las entidades en la capa `BEND` se ignoran.
+- Se leen LINE, LWPOLYLINE, POLYLINE, CIRCLE y ARC. Las entidades en la capa `BEND` se ignoran.
 - Cada archivo debe contener una sola pieza.
 - Los barrenos y recortes interiores cerrados se detectan, se descuentan del área y se consideran como espacios libres al comprobar colisiones durante el acomodo. También se muestran en la vista previa y el PDF.
 
 Limitaciones de la versión 1:
 - Los arcos "bulge" dentro de polilíneas se aproximan con segmentos rectos.
-- Las POLYLINE del formato antiguo no se leen; expórtalas como LWPOLYLINE.
 - La heurística bottom-left no garantiza el mejor aprovechamiento posible.
 
 ## Privacidad
