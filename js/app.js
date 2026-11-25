@@ -403,17 +403,18 @@ function exportPDF() {
     doc.setTextColor(0, 0, 0);
   }
 
-  // Una página por lámina
+  // Una página por lámina, con plano y lista en el mismo estilo de colores de la interfaz.
   let pageNo = 0;
   for (const r of rows) {
     r.sheets.forEach((sh, i) => {
-      doc.addPage();
+      if (pageNo > 0) doc.addPage();
       pageNo++;
       const { W, H } = sh.def;
-      const scale = Math.min(180 / W, 180 / H);
-      const y0 = 42;
-      const X = (x) => 15 + x * scale;
-      const Y = (yy) => y0 + (H - yy) * scale;
+      const factor = unitToMm();
+      const scale = Math.min(105 / (W * factor), 205 / (H * factor));
+      const x0 = 15, y0 = 48;
+      const X = (x) => x0 + x * scale * factor;
+      const Y = (yy) => y0 + (H - yy) * scale * factor;
 
       doc.setFillColor(...blue);
       doc.rect(0, 0, 210, 27, 'F');
@@ -425,45 +426,78 @@ function exportPDF() {
       doc.setFontSize(8);
       doc.text(`Lámina ${i + 1} de ${r.sheets.length} · Ensamble: ${assembly}`, 15, 19, { maxWidth: 180 });
       doc.setTextColor(...dark);
-      doc.setFontSize(9);
-      const sheetUse = sh.items.reduce((a, it) => a + it.area, 0) / (W * H) * 100;
-      doc.text(`Uso: ${sheetUse.toFixed(1)}% | Merma: ${Math.max(0, 100 - sheetUse).toFixed(1)}% | Margen: ${sh.def.margin} mm | Gap: ${sh.def.gap} mm`, 15, 33);
-
-      doc.setLineWidth(0.4);
-      doc.rect(X(0), Y(H), W * scale, H * scale);
-      doc.setLineWidth(0.2);
-      for (const it of sh.items) {
-        const p = it.poly;
-        for (let k = 0; k < p.length; k++) {
-          const a = p[k], b = p[(k + 1) % p.length];
-          doc.line(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]));
-        }
-        for (const hole of (it.holes || [])) {
-          for (let k = 0; k < hole.length; k++) {
-            const a = hole[k], b = hole[(k + 1) % hole.length];
-            doc.line(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]));
-          }
-        }
-        const [cx, cy] = centroid(p);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.text(String(sh.items.indexOf(it) + 1), X(cx), Y(cy), { align: 'center' });
-      }
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9);
-      let ty = y0 + H * scale + 9;
-      doc.text('IDENTIFICACIÓN DE PIEZAS', 15, ty);
-      doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
+      const sheetUse = sh.items.reduce((a, it) => a + it.area, 0) / (W * H) * 100;
+      doc.text(`Uso ${sheetUse.toFixed(1)}% · Merma ${Math.max(0, 100 - sheetUse).toFixed(1)}% · ${W} × ${H} ${unitLabel()}`, 15, 35);
+
+      const sheetW = W * scale * factor, sheetH = H * scale * factor;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(...blue);
+      doc.setLineWidth(0.7);
+      doc.rect(x0, y0, sheetW, sheetH, 'FD');
+
+      const drawLoop = (poly, fill, stroke) => {
+        if (!poly || poly.length < 3) return;
+        const deltas = [];
+        let prev = poly[0];
+        for (let k = 1; k < poly.length; k++) {
+          const p = poly[k];
+          deltas.push([p[0] - prev[0], p[1] - prev[1]]);
+          prev = p;
+        }
+        doc.setFillColor(...fill);
+        doc.setDrawColor(...stroke);
+        doc.setLineWidth(0.35);
+        doc.lines(deltas, X(poly[0][0]), Y(poly[0][1]), [scale * factor, -scale * factor], 'FD', true);
+      };
+
       sh.items.forEach((it, index) => {
-        ty += 5;
-        if (ty > 285) { doc.addPage(); ty = 20; }
-        doc.text(`${index + 1}. ${it.name}`, 18, ty, { maxWidth: 175 });
+        drawLoop(it.poly, [218, 232, 244], blue);
+        (it.holes || []).forEach((hole) => drawLoop(hole, [255, 255, 255], blue));
+        const [cx, cy] = centroid(it.poly);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(...dark);
+        doc.text(String(index + 1), X(cx), Y(cy), { align: 'center' });
+      });
+
+      const listX = 128;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(...blue);
+      doc.text('PIEZAS UTILIZADAS', listX, 48);
+      let ty = 57;
+      sh.items.forEach((it, index) => {
+        const lines = doc.splitTextToSize(it.name, 57);
+        const rowH = Math.max(8, lines.length * 4.2 + 3);
+        if (ty + rowH > 282) {
+          doc.addPage();
+          doc.setFillColor(...blue);
+          doc.rect(0, 0, 210, 22, 'F');
+          doc.setTextColor(255, 255, 255);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.text('PIEZAS UTILIZADAS · CONTINUACIÓN', 15, 14);
+          ty = 32;
+        }
+        doc.setFillColor(247, 250, 252);
+        doc.setDrawColor(224, 231, 238);
+        doc.roundedRect(listX, ty - 5, 72, rowH, 1.5, 1.5, 'FD');
+        doc.setFillColor(...blue);
+        doc.roundedRect(listX + 3, ty - 2.5, 5.5, 5.5, 1, 1, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.5);
+        doc.text(String(index + 1), listX + 5.75, ty + 1.2, { align: 'center' });
+        doc.setTextColor(...dark);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text(lines, listX + 11, ty + 1, { maxWidth: 58 });
+        ty += rowH + 2;
       });
       doc.setTextColor(110, 120, 130);
       doc.setFontSize(7);
-      doc.text(`Generado por Nesting · ${new Date().toLocaleDateString()}`, 15, 290);
+      doc.text(`Generado por Nesting · Unidades: ${unitLabel()} · ${new Date().toLocaleDateString()}`, 15, 290);
     });
   }
   // Si no hubo láminas, deja un aviso en la primera página
