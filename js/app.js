@@ -7,6 +7,18 @@ const ANGLE_OPTIONS = [
   { value: '0,90', label: '0° y 90°' },
   { value: '0,45,90', label: '0°, 45° y 90°' },
 ];
+const MATERIAL_OPTIONS = [
+  'Acero al carbón',
+  'Acero galvanizado',
+  'Acero inoxidable 304',
+  'Acero inoxidable 316',
+  'Aluminio',
+];
+const CALIBRE_OPTIONS = [
+  'Calibre 10', 'Calibre 11', 'Calibre 12', 'Calibre 14', 'Calibre 16',
+  'Calibre 18', 'Calibre 20', 'Calibre 22', 'Calibre 24',
+  'Placa 1/8 in', 'Placa 3/16 in', 'Placa 1/4 in',
+];
 
 // Estado solo en memoria. No se usa localStorage ni IndexedDB.
 let files = [];   // { name, qty, material, calibre, geom, error }
@@ -28,6 +40,31 @@ function el(tag, props = {}, children = []) {
 function input(type, value, onInput, extra = {}) {
   const n = el('input', { type, value, ...extra });
   n.addEventListener('input', () => onInput(type === 'number' ? parseFloat(n.value) : n.value));
+  return n;
+}
+
+function dropdown(value, options, onChange, placeholder = 'Seleccionar...') {
+  const n = el('select');
+  n.append(el('option', { value: '', textContent: placeholder }));
+  options.forEach((option) => n.append(el('option', { value: option, textContent: option })));
+  if (value && !options.includes(value)) {
+    n.append(el('option', { value, textContent: `Personalizado: ${value}` }));
+  }
+  n.append(el('option', { value: '__OTHER__', textContent: 'Otro (escribir...)' }));
+  n.value = value || '';
+  n.addEventListener('change', () => {
+    if (n.value === '__OTHER__') {
+      const custom = prompt('Escribe el valor personalizado:');
+      if (custom && custom.trim()) {
+        const v = custom.trim();
+        if (![...n.options].some((o) => o.value === v)) n.insertBefore(el('option', { value: v, textContent: `Personalizado: ${v}` }), n.lastElementChild);
+        n.value = v;
+        onChange(v);
+      } else n.value = value || '';
+      return;
+    }
+    onChange(n.value);
+  });
   return n;
 }
 
@@ -75,8 +112,8 @@ function renderPieces() {
         el('td', { textContent: f.name }),
         el('td', { textContent: f.geom ? Math.round(f.geom.area).toLocaleString() : '—' }),
         el('td', {}, [input('number', f.qty, (v) => (f.qty = Math.max(0, parseInt(v, 10) || 0)), { min: 0, step: 1, disabled })]),
-        el('td', {}, [input('text', f.material, (v) => (f.material = v), { placeholder: 'Ej. Acero', disabled })]),
-        el('td', {}, [input('text', f.calibre, (v) => (f.calibre = v), { placeholder: 'Ej. CAL 16', disabled })]),
+        el('td', {}, [dropdown(f.material, MATERIAL_OPTIONS, (v) => (f.material = v), 'Material...')]),
+        el('td', {}, [dropdown(f.calibre, CALIBRE_OPTIONS, (v) => (f.calibre = v), 'Calibre...')]),
         el('td', { textContent: f.error ? 'Error: ' + f.error : 'OK', className: f.error ? 'err' : 'ok' }),
         el('td', {}, [el('button', { type: 'button', className: 'danger small', textContent: 'Quitar', onclick: () => {
           if (confirm(`¿Quitar el archivo "${f.name}" de la lista?`)) { files = files.filter((item) => item !== f); renderPieces(); }
@@ -103,8 +140,8 @@ function renderDefs() {
       el('div', { className: 'defcard' }, [
         el('div', { className: 'defhead', textContent: `Lámina tipo ${i + 1}` }),
         el('div', { className: 'grid' }, [
-          el('label', {}, [el('span', { textContent: 'Material' }), input('text', d.material, (v) => (d.material = v), { placeholder: 'Ej. Acero' })]),
-          el('label', {}, [el('span', { textContent: 'Calibre' }), input('text', d.calibre, (v) => (d.calibre = v), { placeholder: 'Ej. CAL 16' })]),
+          el('label', {}, [el('span', { textContent: 'Material' }), dropdown(d.material, MATERIAL_OPTIONS, (v) => (d.material = v), 'Material...')]),
+          el('label', {}, [el('span', { textContent: 'Calibre' }), dropdown(d.calibre, CALIBRE_OPTIONS, (v) => (d.calibre = v), 'Calibre...')]),
           el('label', {}, [el('span', { textContent: 'Ancho (mm)' }), input('number', d.W, (v) => (d.W = v), { min: 1 })]),
           el('label', {}, [el('span', { textContent: 'Alto (mm)' }), input('number', d.H, (v) => (d.H = v), { min: 1 })]),
           el('label', {}, [el('span', { textContent: 'Margen (mm)' }), input('number', d.margin, (v) => (d.margin = v), { min: 0 })]),
