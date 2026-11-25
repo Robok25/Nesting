@@ -33,19 +33,33 @@ function input(type, value, onInput, extra = {}) {
 
 // ---------- 1 y 2. Archivos y piezas ----------
 $('dxf').addEventListener('change', async (e) => {
-  const loaded = [];
-  let skipped = 0;
-  for (const f of e.target.files) {
-    if (!/\.dxf$/i.test(f.name)) { skipped++; continue; }
-    const name = f.name.replace(/\.dxf$/i, '');
-    try {
-      loaded.push({ name, qty: 1, material: '', calibre: '', geom: parseDXF(await f.text()), error: null });
-    } catch (err) {
-      loaded.push({ name, qty: 0, material: '', calibre: '', geom: null, error: err.message });
+  const selected = Array.from(e.target.files || []);
+  e.target.value = '';
+  let added = 0, replaced = 0, skipped = 0, cancelled = 0;
+  for (const file of selected) {
+    if (!/\\.dxf$/i.test(file.name)) { skipped++; continue; }
+    const name = file.name.replace(/\\.dxf$/i, '');
+    const index = files.findIndex((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    let previous = null;
+    if (index >= 0) {
+      if (!confirm(`Ya existe "${name}".\\n\\n¿Deseas reemplazar el DXF existente?\\nAceptar = reemplazar · Cancelar = omitir este archivo`)) { cancelled++; continue; }
+      previous = files[index];
     }
+    let entry;
+    try {
+      entry = { name, qty: previous ? previous.qty : 1, material: previous ? previous.material : '', calibre: previous ? previous.calibre : '', geom: parseDXF(await file.text()), error: null };
+    } catch (err) {
+      entry = { name, qty: previous ? previous.qty : 0, material: previous ? previous.material : '', calibre: previous ? previous.calibre : '', geom: null, error: err.message };
+    }
+    if (index >= 0) { files[index] = entry; replaced++; } else { files.push(entry); added++; }
   }
-  files = loaded.sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
-  $('fileMsg').textContent = skipped ? `Se ignoraron ${skipped} archivo(s) que no son DXF.` : '';
+  files.sort((x, y) => x.name.localeCompare(y.name, 'es', { numeric: true }));
+  const messages = [];
+  if (added) messages.push(`${added} agregado(s)`);
+  if (replaced) messages.push(`${replaced} reemplazado(s)`);
+  if (cancelled) messages.push(`${cancelled} duplicado(s) omitido(s)`);
+  if (skipped) messages.push(`${skipped} archivo(s) no DXF ignorado(s)`);
+  $('fileMsg').textContent = messages.join(' · ') || 'No se agregaron archivos.';
   renderPieces();
 });
 
@@ -63,6 +77,9 @@ function renderPieces() {
         el('td', {}, [input('text', f.material, (v) => (f.material = v), { placeholder: 'Ej. Acero', disabled })]),
         el('td', {}, [input('text', f.calibre, (v) => (f.calibre = v), { placeholder: 'Ej. CAL 16', disabled })]),
         el('td', { textContent: f.error ? 'Error: ' + f.error : 'OK', className: f.error ? 'err' : 'ok' }),
+        el('td', {}, [el('button', { type: 'button', className: 'danger small', textContent: 'Quitar', onclick: () => {
+          if (confirm(`¿Quitar el archivo "${f.name}" de la lista?`)) { files = files.filter((item) => item !== f); renderPieces(); }
+        } })]),
       ])
     );
   }
@@ -165,7 +182,7 @@ function summaryRows() {
     const sheets = result.sections.filter((s) => s.def.id === d.id);
     const used = sheets.reduce((a, s) => a + s.items.reduce((b, it) => b + it.area, 0), 0);
     const total = sheets.length * d.W * d.H;
-    return { def: d, sheets, util: total ? (used / total) * 100 : 0 };
+    const util = total ? (used / total) * 100 : 0;\n    return { def: d, sheets, util, waste: Math.max(0, 100 - util) };
   });
 }
 
@@ -178,12 +195,12 @@ function renderResult() {
   $('summary').replaceChildren(
     el('p', { className: 'big', textContent: `Láminas necesarias en total: ${totalSheets}` }),
     el('table', {}, [
-      el('thead', {}, [el('tr', {}, ['Lámina', 'Láminas', 'Aprovechamiento'].map((t) => el('th', { textContent: t })))]),
+      el('thead', {}, [el('tr', {}, ['Lámina', 'Láminas necesarias', 'Uso', 'Merma'].map((t) => el('th', { textContent: t })))]),
       el('tbody', {}, rows.map((r) =>
         el('tr', {}, [
           el('td', { textContent: defLabel(r.def) }),
           el('td', { textContent: String(r.sheets.length) }),
-          el('td', { textContent: r.sheets.length ? `${r.util.toFixed(1)}%` : '—' }),
+          el('td', { textContent: r.sheets.length ? `${r.util.toFixed(1)}%` : '—' }),\n          el('td', { textContent: r.sheets.length ? `${r.waste.toFixed(1)}%` : '—' }),
         ])
       )),
     ])
@@ -196,12 +213,23 @@ function renderResult() {
     if (!r.sheets.length) continue;
     out.append(el('h3', { textContent: defLabel(r.def) }));
     r.sheets.forEach((sh, i) => {
-      const u = (sh.items.reduce((a, it) => a + it.area, 0) / (sh.def.W * sh.def.H)) * 100;
-      out.append(el('p', { className: 'small', textContent: `Lámina ${i + 1} — ${sh.items.length} piezas — ${u.toFixed(1)}%` }));
-      out.append(sheetSVG(sh));
+      const usedArea = sh.items.reduce((a, it) => a + it.area, 0);
+      const totalArea = sh.def.W * sh.def.H;
+      const usePct = totalArea ? usedArea / totalArea * 100 : 0;
+      const wastePct = Math.max(0, 100 - usePct);
+      const heading = el('p', { className: 'small metric', textContent: `Lámina ${i + 1} de ${r.sheets.length} · ${sh.items.length} piezas · Uso ${usePct.toFixed(1)}% · Merma ${wastePct.toFixed(1)}%` });
+      const list = el('ol', { className: 'piece-list' });
+      sh.items.forEach((it, index) => {
+        it.displayNumber = index + 1;
+        list.append(el('li', { textContent: it.name }));
+      });
+      const preview = el('div', { className: 'sheet-preview' }, [sheetSVG(sh)]);
+      const detail = el('div', {}, [el('div', { className: 'metric', textContent: 'Piezas utilizadas' }), el('p', { className: 'muted', textContent: 'El número dentro del plano corresponde al número de esta lista.' }), list]);
+      out.append(heading, el('div', { className: 'result-sheet' }, [preview, detail]));
     });
   }
   $('finalize').disabled = false;
+  showPanel('resultPanel');
 }
 
 // ---------- Dibujo ----------
@@ -223,8 +251,7 @@ function sheetSVG(sh) {
       .join(' ') + ' Z';
     add('path', { d, class: 'piece' });
     const [cx, cy] = centroid(it.poly);
-    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(W / 60, 4), class: 'label' });
-    t.textContent = `${it.name} (${it.angle}°)`;
+    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 55, 5), class: 'label' });\n    t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
   }
   return svg;
 }
@@ -247,7 +274,7 @@ function exportPDF() {
   y += 6;
   doc.setFontSize(9);
   for (const r of rows) {
-    doc.text(`${defLabel(r.def)}:  ${r.sheets.length} lámina(s)  ${r.sheets.length ? r.util.toFixed(1) + '%' : ''}`, 18, y);
+    doc.text(`${defLabel(r.def)}: ${r.sheets.length} lámina(s) · Uso ${r.sheets.length ? r.util.toFixed(1) + '%' : '—'} · Merma ${r.sheets.length ? r.waste.toFixed(1) + '%' : '—'}`, 18, y);
     y += 5;
   }
   if (result.unplaced.length) {
@@ -272,7 +299,7 @@ function exportPDF() {
       doc.setFontSize(11);
       doc.text(`${defLabel(sh.def)} — Lámina ${i + 1} de ${r.sheets.length}`, 15, 20);
       doc.setFontSize(9);
-      doc.text(`Margen: ${sh.def.margin} mm | Gap: ${sh.def.gap} mm | Rotaciones: ${sh.def.angles}°`, 15, 26);
+      const sheetUse = sh.items.reduce((a, it) => a + it.area, 0) / (W * H) * 100;\n      doc.text(`Uso: ${sheetUse.toFixed(1)}% | Merma: ${Math.max(0, 100 - sheetUse).toFixed(1)}% | Margen: ${sh.def.margin} mm | Gap: ${sh.def.gap} mm`, 15, 26);
 
       doc.setLineWidth(0.4);
       doc.rect(X(0), Y(H), W * scale, H * scale);
@@ -284,8 +311,7 @@ function exportPDF() {
           doc.line(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]));
         }
         const [cx, cy] = centroid(p);
-        doc.setFontSize(6);
-        doc.text(`${it.name} ${it.angle}°`, X(cx), Y(cy), { align: 'center' });
+        doc.setFontSize(7);\n        doc.text(String(sh.items.indexOf(it) + 1), X(cx), Y(cy), { align: 'center' });
       }
 
       const counts = {};
@@ -337,3 +363,17 @@ function clearAll(message) {
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');
 }
+
+
+function showPanel(panelId) {
+  document.querySelectorAll('.panel').forEach((panel) => { panel.hidden = panel.id !== panelId; });
+  document.querySelectorAll('.nav button[data-panel]').forEach((button) => {
+    const active = button.dataset.panel === panelId;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-current', active ? 'step' : 'false');
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+document.querySelectorAll('.nav button[data-panel]').forEach((button) => {
+  button.addEventListener('click', () => showPanel(button.dataset.panel));
+});
