@@ -1,6 +1,6 @@
-// Lector DXF mínimo. Soporta LINE, LWPOLYLINE, CIRCLE y ARC.
+// Lector DXF. Soporta LINE, LWPOLYLINE, POLYLINE, CIRCLE y ARC.
 // Ignora la capa BEND. Cada archivo debe contener una sola pieza.
-// Nota: los arcos "bulge" dentro de polilíneas se aproximan como segmentos rectos.
+// Barrenos y contornos interiores cerrados se conservan como huecos. Los arcos "bulge" se aproximan como segmentos rectos.
 
 const EPS = 0.01;
 const SEG = 48;
@@ -59,9 +59,30 @@ export function parseDXF(text) {
 
   const open = [];
   const closed = [];
-  for (const e of ents) {
+  for (let i = 0; i < ents.length; i++) {
+    const e = ents[i];
     const layer = (e.data.find((p) => p.c === 8)?.v || '0').toUpperCase();
     if (SKIP_LAYERS.includes(layer)) continue;
+
+    // POLYLINE/VERTEX/SEQEND es la representación clásica de polilíneas DXF.
+    if (e.type === 'POLYLINE') {
+      const pts = [];
+      let j = i + 1;
+      while (j < ents.length && ents[j].type === 'VERTEX') {
+        pts.push([num(ents[j].data, 10), num(ents[j].data, 20)]);
+        j++;
+      }
+      if (j < ents.length && ents[j].type === 'SEQEND') i = j;
+      else i = j - 1;
+      if (pts.length > 2) {
+        const isClosed = (num(e.data, 70) & 1) === 1;
+        (isClosed ? closed : open).push(pts);
+      }
+      continue;
+    }
+
+    // Los registros VERTEX y SEQEND pertenecen a su POLYLINE y no son contornos independientes.
+    if (e.type === 'VERTEX' || e.type === 'SEQEND') continue;
     const path = toPath(e);
     if (!path) continue;
     (path.closed ? closed : open).push(path.pts);
