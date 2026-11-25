@@ -516,8 +516,8 @@ function exportDXF() {
     return;
   }
 
-  const cleanText = (value) => String(value || '').replace(/[\\r\\n\\t]/g, ' ').replace(/[<>]/g, '').trim();
-  const pair = (code, value) => `${code}\\n${value}\\n`;
+  const cleanText = (value) => String(value || '').replace(/[\r\n\t]/g, ' ').replace(/[<>]/g, '').trim();
+  const pair = (code, value) => `${code}\n${value}\n`;
   const layers = [
     ['SHEETS', 5],
     ['PARTS', 5],
