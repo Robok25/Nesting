@@ -1,5 +1,6 @@
-// Motor de nesting por heurística bottom-left sobre candidatos "tocando" piezas ya colocadas.
-// Las piezas se tratan como contornos exteriores (los agujeros no bloquean el acomodo).
+// Motor de nesting: heurística bottom-left sobre candidatos que "tocan" piezas ya colocadas.
+// Se ejecuta por grupo (material + calibre). Cada grupo usa las láminas definidas para ese grupo.
+// Las piezas se tratan por su contorno exterior; los agujeros no bloquean el acomodo.
 
 export function bbox(p) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -88,8 +89,23 @@ function collides(cand, bb, items, g) {
   return false;
 }
 
-function firstFreePosition(sh, v, ctx) {
-  const { W, H, margin, g } = ctx;
+// Variantes (rotaciones normalizadas) de una pieza para una definición de lámina.
+function variantsFor(inst, def) {
+  const key = def.angles.join(',');
+  if (!inst.cache.has(key)) {
+    inst.cache.set(
+      key,
+      def.angles.map((a) => {
+        const poly = normalize(rotate(inst.outer, a));
+        return { angle: a, poly, bb: bbox(poly) };
+      })
+    );
+  }
+  return inst.cache.get(key);
+}
+
+function firstFreePosition(sh, v) {
+  const { W, H, margin, g } = sh.ctx;
   const xs = [margin], ys = [margin];
   for (const it of sh.items) {
     xs.push(it.bb.maxX + g);
@@ -108,10 +124,10 @@ function firstFreePosition(sh, v, ctx) {
   return null;
 }
 
-function bestPlacement(sh, inst, ctx) {
+function bestPlacement(sh, inst) {
   let best = null;
-  for (const v of inst.variants) {
-    const pos = firstFreePosition(sh, v, ctx);
+  for (const v of variantsFor(inst, sh.def)) {
+    const pos = firstFreePosition(sh, v);
     if (!pos) continue;
     if (!best || pos.y < best.y - 1e-9 || (Math.abs(pos.y - best.y) < 1e-9 && pos.x < best.x)) {
       best = { ...pos, v };
@@ -128,47 +144,53 @@ function bestPlacement(sh, inst, ctx) {
   };
 }
 
-// pieces: [{ name, outer, area, qty }]
-export async function nest({ pieces, W, H, margin, gap, angles, onProgress }) {
-  const ctx = { W, H, margin, g: Math.max(gap, 0.01) };
+// pieces: [{ name, outer, area, qty }]   defs: [{ id, W, H, margin, gap, angles }]
+// Devuelve sheets: [{ def, items }] y unplaced: [nombres de piezas que no caben].
+export async function nestGroup({ pieces, defs, onProgress }) {
   const instances = [];
   for (const pc of pieces) {
-    const variants = angles.map((a) => {
-      const poly = normalize(rotate(pc.outer, a));
-      return { angle: a, poly, bb: bbox(poly) };
-    });
     for (let k = 0; k < pc.qty; k++) {
-      instances.push({ name: pc.name, area: pc.area, variants });
+      instances.push({ name: pc.name, area: pc.area, outer: pc.outer, cache: new Map() });
     }
   }
-  // Piezas grandes primero: suele mejorar el aprovechamiento.
+  // Piezas grandes primero: normalmente mejora el aprovechamiento.
   instances.sort((a, b) => b.area - a.area);
 
   const sheets = [];
   const unplaced = [];
   for (let i = 0; i < instances.length; i++) {
     const inst = instances[i];
-    let done = false;
+    let placed = false;
+
     for (const sh of sheets) {
-      const pl = bestPlacement(sh, inst, ctx);
+      const pl = bestPlacement(sh, inst);
       if (pl) {
         sh.items.push(pl);
-        done = true;
+        placed = true;
         break;
       }
     }
-    if (!done) {
-      const sh = { items: [] };
-      const pl = bestPlacement(sh, inst, ctx);
-      if (pl) {
-        sh.items.push(pl);
-        sheets.push(sh);
-      } else {
-        unplaced.push(inst.name);
+
+    if (!placed) {
+      for (const def of defs) {
+        const sh = {
+          def,
+          ctx: { W: def.W, H: def.H, margin: def.margin, g: Math.max(def.gap, 0.01) },
+          items: [],
+        };
+        const pl = bestPlacement(sh, inst);
+        if (pl) {
+          sh.items.push(pl);
+          sheets.push(sh);
+          placed = true;
+          break;
+        }
       }
     }
+
+    if (!placed) unplaced.push(inst.name);
     if (onProgress) onProgress(i + 1, instances.length);
     await new Promise((r) => setTimeout(r, 0));
   }
-  return { sheets, unplaced, W, H };
+  return { sheets, unplaced };
 }

@@ -1,13 +1,22 @@
 import { parseDXF } from './dxf.js';
-import { nest, centroid } from './nester.js';
+import { nestGroup, centroid } from './nester.js';
 
 const $ = (id) => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
+const ANGLE_OPTIONS = [
+  { value: '0,90', label: '0° y 90°' },
+  { value: '0,45,90', label: '0°, 45° y 90°' },
+];
 
 // Estado solo en memoria. No se usa localStorage ni IndexedDB.
-let pieces = []; // { name, qty, geom, error }
+let files = [];   // { name, qty, material, calibre, geom, error }
+let defs = [];    // { id, material, calibre, W, H, margin, gap, angles }
 let result = null;
-let params = null;
+let nextId = 1;
+
+const keyOf = (m, c) => `${m.trim().toUpperCase()}|${c.trim().toUpperCase()}`;
+const defLabel = (d) => `${d.material.trim()} · ${d.calibre.trim()} · ${d.W} × ${d.H} mm`;
+const parseAngles = (s) => s.split(',').map(Number);
 
 function el(tag, props = {}, children = []) {
   const n = document.createElement(tag);
@@ -16,79 +25,133 @@ function el(tag, props = {}, children = []) {
   return n;
 }
 
-// ---------- Carga de DXF ----------
+function input(type, value, onInput, extra = {}) {
+  const n = el('input', { type, value, ...extra });
+  n.addEventListener('input', () => onInput(type === 'number' ? parseFloat(n.value) : n.value));
+  return n;
+}
+
+// ---------- 1 y 2. Archivos y piezas ----------
 $('dxf').addEventListener('change', async (e) => {
-  pieces = [];
+  const loaded = [];
+  let skipped = 0;
   for (const f of e.target.files) {
+    if (!/\.dxf$/i.test(f.name)) { skipped++; continue; }
     const name = f.name.replace(/\.dxf$/i, '');
     try {
-      const geom = parseDXF(await f.text());
-      pieces.push({ name, qty: 1, geom, error: null });
+      loaded.push({ name, qty: 1, material: '', calibre: '', geom: parseDXF(await f.text()), error: null });
     } catch (err) {
-      pieces.push({ name, qty: 0, geom: null, error: err.message });
+      loaded.push({ name, qty: 0, material: '', calibre: '', geom: null, error: err.message });
     }
   }
+  files = loaded.sort((a, b) => a.name.localeCompare(b.name, 'es', { numeric: true }));
+  $('fileMsg').textContent = skipped ? `Se ignoraron ${skipped} archivo(s) que no son DXF.` : '';
   renderPieces();
 });
 
 function renderPieces() {
   const body = $('pieces');
   body.replaceChildren();
-  $('piecesBox').hidden = pieces.length === 0;
-  for (const p of pieces) {
-    const qty = el('input', { type: 'number', min: 0, step: 1, value: p.qty, disabled: !!p.error });
-    qty.addEventListener('input', () => {
-      p.qty = Math.max(0, parseInt(qty.value, 10) || 0);
-    });
+  $('piecesBox').hidden = files.length === 0;
+  for (const f of files) {
+    const disabled = !!f.error;
     body.append(
       el('tr', {}, [
-        el('td', { textContent: p.name }),
-        el('td', { textContent: p.geom ? Math.round(p.geom.area).toLocaleString() : '—' }),
-        el('td', {}, [qty]),
-        el('td', { textContent: p.error ? 'Error: ' + p.error : 'OK', className: p.error ? 'err' : 'ok' }),
+        el('td', { textContent: f.name }),
+        el('td', { textContent: f.geom ? Math.round(f.geom.area).toLocaleString() : '—' }),
+        el('td', {}, [input('number', f.qty, (v) => (f.qty = Math.max(0, parseInt(v, 10) || 0)), { min: 0, step: 1, disabled })]),
+        el('td', {}, [input('text', f.material, (v) => (f.material = v), { placeholder: 'Ej. Acero', disabled })]),
+        el('td', {}, [input('text', f.calibre, (v) => (f.calibre = v), { placeholder: 'Ej. CAL 16', disabled })]),
+        el('td', { textContent: f.error ? 'Error: ' + f.error : 'OK', className: f.error ? 'err' : 'ok' }),
       ])
     );
   }
 }
 
-// ---------- Cálculo ----------
-function readParams() {
-  const num = (id) => parseFloat($(id).value);
-  const W = num('W'), H = num('H'), margin = num('margin'), gap = num('gap');
-  const angles = $('angles').value
-    .split(',')
-    .map((s) => parseFloat(s))
-    .filter((a) => Number.isFinite(a));
-  if (!(W > 0 && H > 0) || !(margin >= 0) || !(gap >= 0) || !angles.length) {
-    alert('Revisa tamaño de lámina, margen, gap y ángulos.');
-    return null;
+// ---------- 3. Láminas disponibles ----------
+$('addDef').addEventListener('click', () => {
+  defs.push({ id: nextId++, material: '', calibre: '', W: 1220, H: 2440, margin: 10, gap: 3, angles: '0,90' });
+  renderDefs();
+});
+
+function renderDefs() {
+  const box = $('defs');
+  box.replaceChildren();
+  defs.forEach((d, i) => {
+    const angles = el('select', {}, ANGLE_OPTIONS.map((o) => el('option', { value: o.value, textContent: o.label })));
+    angles.value = d.angles;
+    angles.addEventListener('change', () => (d.angles = angles.value));
+    box.append(
+      el('div', { className: 'defcard' }, [
+        el('div', { className: 'defhead', textContent: `Lámina tipo ${i + 1}` }),
+        el('div', { className: 'grid' }, [
+          el('label', {}, [el('span', { textContent: 'Material' }), input('text', d.material, (v) => (d.material = v), { placeholder: 'Ej. Acero' })]),
+          el('label', {}, [el('span', { textContent: 'Calibre' }), input('text', d.calibre, (v) => (d.calibre = v), { placeholder: 'Ej. CAL 16' })]),
+          el('label', {}, [el('span', { textContent: 'Ancho (mm)' }), input('number', d.W, (v) => (d.W = v), { min: 1 })]),
+          el('label', {}, [el('span', { textContent: 'Alto (mm)' }), input('number', d.H, (v) => (d.H = v), { min: 1 })]),
+          el('label', {}, [el('span', { textContent: 'Margen (mm)' }), input('number', d.margin, (v) => (d.margin = v), { min: 0 })]),
+          el('label', {}, [el('span', { textContent: 'Gap (mm)' }), input('number', d.gap, (v) => (d.gap = v), { min: 0, step: 0.1 })]),
+          el('label', {}, [el('span', { textContent: 'Rotaciones' }), angles]),
+        ]),
+        el('button', {
+          className: 'danger small',
+          textContent: 'Quitar',
+          onclick: () => { defs.splice(i, 1); renderDefs(); },
+        }),
+      ])
+    );
+  });
+}
+
+// ---------- 4. Cálculo ----------
+function validate() {
+  const used = files.filter((f) => f.geom && f.qty > 0);
+  if (!used.length) return 'Sube al menos un DXF y asigna cantidad mayor a 0.';
+  const noMat = used.filter((f) => !f.material.trim() || !f.calibre.trim()).map((f) => f.name);
+  if (noMat.length) return `Falta material o calibre en: ${noMat.join(', ')}`;
+  const keys = new Set(used.map((f) => keyOf(f.material, f.calibre)));
+  for (const k of keys) {
+    if (!defs.some((d) => keyOf(d.material, d.calibre) === k)) {
+      const [m, c] = k.split('|');
+      return `No hay lámina definida para ${m} · ${c}. Agrégala en el paso 3.`;
+    }
   }
-  return { W, H, margin, gap, angles, calibre: $('calibre').value.trim() };
+  for (const d of defs) {
+    if (!(d.W > 0 && d.H > 0) || !(d.margin >= 0) || !(d.gap >= 0)) {
+      return `Revisa las medidas de la lámina ${d.material || ''} ${d.calibre || ''}.`;
+    }
+  }
+  return null;
 }
 
 $('calc').addEventListener('click', async () => {
-  const p = readParams();
-  if (!p) return;
-  const list = pieces
-    .filter((x) => x.geom && x.qty > 0)
-    .map((x) => ({ name: x.name, outer: x.geom.outer, area: x.geom.area, qty: x.qty }));
-  if (!list.length) {
-    alert('Sube al menos un DXF con cantidad mayor a 0.');
-    return;
+  const err = validate();
+  if (err) { alert(err); return; }
+
+  const groups = new Map();
+  for (const f of files) {
+    if (!f.geom || f.qty <= 0) continue;
+    const k = keyOf(f.material, f.calibre);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push({ name: f.name, outer: f.geom.outer, area: f.geom.area, qty: f.qty });
   }
+
   $('calc').disabled = true;
-  $('status').textContent = 'Calculando…';
+  result = { sections: [], unplaced: [] };
   try {
-    result = await nest({
-      pieces: list,
-      W: p.W,
-      H: p.H,
-      margin: p.margin,
-      gap: p.gap,
-      angles: p.angles,
-      onProgress: (i, t) => ($('status').textContent = `Acomodando pieza ${i} de ${t}…`),
-    });
-    params = p;
+    for (const [k, pcs] of groups) {
+      const gdefs = defs
+        .filter((d) => keyOf(d.material, d.calibre) === k)
+        .map((d) => ({ ...d, angles: parseAngles(d.angles) }));
+      $('status').textContent = `Acomodando ${k.split('|').join(' · ')}…`;
+      const r = await nestGroup({
+        pieces: pcs,
+        defs: gdefs,
+        onProgress: (i, t) => ($('status').textContent = `${k.split('|').join(' · ')}: pieza ${i} de ${t}`),
+      });
+      result.sections.push(...r.sheets.map((s) => s));
+      result.unplaced.push(...r.unplaced.map((n) => `${n} (${k.split('|').join(' · ')})`));
+    }
     renderResult();
   } finally {
     $('calc').disabled = false;
@@ -96,35 +159,54 @@ $('calc').addEventListener('click', async () => {
   }
 });
 
-function stats() {
-  const { sheets } = result;
-  const used = sheets.reduce((s, sh) => s + sh.items.reduce((a, it) => a + it.area, 0), 0);
-  const total = sheets.length * params.W * params.H;
-  return { count: sheets.length, util: total ? (used / total) * 100 : 0 };
+// Resumen por definición de lámina: cuántas láminas de cada tipo se usan.
+function summaryRows() {
+  return defs.map((d) => {
+    const sheets = result.sections.filter((s) => s.def.id === d.id);
+    const used = sheets.reduce((a, s) => a + s.items.reduce((b, it) => b + it.area, 0), 0);
+    const total = sheets.length * d.W * d.H;
+    return { def: d, sheets, util: total ? (used / total) * 100 : 0 };
+  });
 }
 
 function renderResult() {
   const out = $('results');
   out.replaceChildren();
-  const { count, util } = stats();
+  const rows = summaryRows();
+  const totalSheets = rows.reduce((a, r) => a + r.sheets.length, 0);
+
   $('summary').replaceChildren(
-    el('p', { textContent: `Láminas necesarias: ${count}`, className: 'big' }),
-    el('p', { textContent: `Aprovechamiento promedio: ${util.toFixed(1)}%` })
+    el('p', { className: 'big', textContent: `Láminas necesarias en total: ${totalSheets}` }),
+    el('table', {}, [
+      el('thead', {}, [el('tr', {}, ['Lámina', 'Láminas', 'Aprovechamiento'].map((t) => el('th', { textContent: t })))]),
+      el('tbody', {}, rows.map((r) =>
+        el('tr', {}, [
+          el('td', { textContent: defLabel(r.def) }),
+          el('td', { textContent: String(r.sheets.length) }),
+          el('td', { textContent: r.sheets.length ? `${r.util.toFixed(1)}%` : '—' }),
+        ])
+      )),
+    ])
   );
   if (result.unplaced.length) {
-    $('summary').append(el('p', { className: 'err', textContent: `No caben en la lámina: ${result.unplaced.join(', ')}` }));
+    $('summary').append(el('p', { className: 'err', textContent: `No caben: ${result.unplaced.join(', ')}` }));
   }
-  result.sheets.forEach((sh, i) => {
-    const shUtil = (sh.items.reduce((a, it) => a + it.area, 0) / (params.W * params.H)) * 100;
-    out.append(el('h3', { textContent: `Lámina ${i + 1} — ${sh.items.length} piezas — ${shUtil.toFixed(1)}%` }));
-    out.append(sheetSVG(sh));
-  });
+
+  for (const r of rows) {
+    if (!r.sheets.length) continue;
+    out.append(el('h3', { textContent: defLabel(r.def) }));
+    r.sheets.forEach((sh, i) => {
+      const u = (sh.items.reduce((a, it) => a + it.area, 0) / (sh.def.W * sh.def.H)) * 100;
+      out.append(el('p', { className: 'small', textContent: `Lámina ${i + 1} — ${sh.items.length} piezas — ${u.toFixed(1)}%` }));
+      out.append(sheetSVG(sh));
+    });
+  }
   $('finalize').disabled = false;
 }
 
 // ---------- Dibujo ----------
 function sheetSVG(sh) {
-  const { W, H } = params;
+  const { W, H } = sh.def;
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('class', 'sheet');
@@ -141,12 +223,7 @@ function sheetSVG(sh) {
       .join(' ') + ' Z';
     add('path', { d, class: 'piece' });
     const [cx, cy] = centroid(it.poly);
-    const t = add('text', {
-      x: cx.toFixed(2),
-      y: (H - cy).toFixed(2),
-      'font-size': Math.max(W / 60, 4),
-      class: 'label',
-    });
+    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(W / 60, 4), class: 'label' });
     t.textContent = `${it.name} (${it.angle}°)`;
   }
   return svg;
@@ -156,56 +233,74 @@ function sheetSVG(sh) {
 function exportPDF() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const { W, H } = params;
-  const { count, util } = stats();
-  const scale = Math.min(180 / W, 180 / H);
-  const drawW = W * scale;
+  const rows = summaryRows();
+  const totalSheets = rows.reduce((a, r) => a + r.sheets.length, 0);
 
   doc.setFontSize(14);
   doc.text('Cálculo de nesting', 15, 15);
   doc.setFontSize(9);
-  [
-    `Fecha: ${new Date().toLocaleString()}`,
-    `Calibre: ${params.calibre || '—'}`,
-    `Lámina: ${W} x ${H} mm | Margen: ${params.margin} mm | Gap: ${params.gap} mm`,
-    `Ángulos: ${params.angles.join(', ')}°`,
-    `Láminas necesarias: ${count} | Aprovechamiento promedio: ${util.toFixed(1)}%`,
-  ].forEach((t, i) => doc.text(t, 15, 22 + i * 5));
+  doc.text(`Fecha: ${new Date().toLocaleString()}`, 15, 22);
+  doc.text(`Láminas necesarias en total: ${totalSheets}`, 15, 27);
+  let y = 37;
+  doc.setFontSize(10);
+  doc.text('Resumen por tipo de lámina', 15, y);
+  y += 6;
+  doc.setFontSize(9);
+  for (const r of rows) {
+    doc.text(`${defLabel(r.def)}:  ${r.sheets.length} lámina(s)  ${r.sheets.length ? r.util.toFixed(1) + '%' : ''}`, 18, y);
+    y += 5;
+  }
+  if (result.unplaced.length) {
+    y += 3;
+    doc.setTextColor(180, 0, 0);
+    doc.text(`No caben: ${result.unplaced.join(', ')}`, 15, y, { maxWidth: 180 });
+    doc.setTextColor(0, 0, 0);
+  }
 
-  result.sheets.forEach((sh, i) => {
-    if (i > 0) doc.addPage();
-    const y0 = i === 0 ? 52 : 25;
-    doc.setFontSize(11);
-    doc.text(`Lámina ${i + 1} de ${count}`, 15, i === 0 ? 45 : 15);
+  // Una página por lámina
+  let pageNo = 0;
+  for (const r of rows) {
+    r.sheets.forEach((sh, i) => {
+      doc.addPage();
+      pageNo++;
+      const { W, H } = sh.def;
+      const scale = Math.min(180 / W, 180 / H);
+      const y0 = 35;
+      const X = (x) => 15 + x * scale;
+      const Y = (yy) => y0 + (H - yy) * scale;
 
-    const X = (x) => 15 + x * scale;
-    const Y = (y) => y0 + (H - y) * scale;
-    doc.setLineWidth(0.4);
-    doc.rect(X(0), Y(H), drawW, H * scale);
+      doc.setFontSize(11);
+      doc.text(`${defLabel(sh.def)} — Lámina ${i + 1} de ${r.sheets.length}`, 15, 20);
+      doc.setFontSize(9);
+      doc.text(`Margen: ${sh.def.margin} mm | Gap: ${sh.def.gap} mm | Rotaciones: ${sh.def.angles}°`, 15, 26);
 
-    doc.setLineWidth(0.2);
-    for (const it of sh.items) {
-      const p = it.poly;
-      for (let k = 0; k < p.length; k++) {
-        const a = p[k], b = p[(k + 1) % p.length];
-        doc.line(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]));
+      doc.setLineWidth(0.4);
+      doc.rect(X(0), Y(H), W * scale, H * scale);
+      doc.setLineWidth(0.2);
+      for (const it of sh.items) {
+        const p = it.poly;
+        for (let k = 0; k < p.length; k++) {
+          const a = p[k], b = p[(k + 1) % p.length];
+          doc.line(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]));
+        }
+        const [cx, cy] = centroid(p);
+        doc.setFontSize(6);
+        doc.text(`${it.name} ${it.angle}°`, X(cx), Y(cy), { align: 'center' });
       }
-      const [cx, cy] = centroid(p);
-      doc.setFontSize(6);
-      doc.text(`${it.name} ${it.angle}°`, X(cx), Y(cy), { align: 'center' });
-    }
 
-    // Conteo de piezas por lámina
-    const counts = {};
-    for (const it of sh.items) counts[it.name] = (counts[it.name] || 0) + 1;
-    doc.setFontSize(9);
-    let ty = y0 + H * scale + 10;
-    doc.text('Piezas en esta lámina:', 15, ty);
-    for (const [name, n] of Object.entries(counts)) {
-      ty += 5;
-      doc.text(`${name}: ${n}`, 20, ty);
-    }
-  });
+      const counts = {};
+      for (const it of sh.items) counts[it.name] = (counts[it.name] || 0) + 1;
+      doc.setFontSize(9);
+      let ty = y0 + H * scale + 10;
+      doc.text('Piezas en esta lámina:', 15, ty);
+      for (const [name, n] of Object.entries(counts)) {
+        ty += 5;
+        doc.text(`${name}: ${n}`, 20, ty);
+      }
+    });
+  }
+  // Si no hubo láminas, deja un aviso en la primera página
+  if (pageNo === 0) doc.text('Sin láminas calculadas.', 15, 60);
 
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   doc.save(`nesting_${stamp}.pdf`);
@@ -215,22 +310,24 @@ function exportPDF() {
 $('finalize').addEventListener('click', () => {
   if (!result) return;
   exportPDF();
-  clearAll('Cálculo finalizado. El PDF se descargó y los datos se borraron de la memoria.');
+  clearAll('Cálculo finalizado. El PDF se descargó y todo se borró de la memoria. Puedes crear un nuevo nesting.');
 });
 
 $('discard').addEventListener('click', () => {
-  if (confirm('¿Descartar el cálculo y los DXF cargados?')) {
-    clearAll('Cálculo descartado.');
+  if (confirm('¿Descartar el cálculo, los DXF y las láminas para empezar uno nuevo?')) {
+    clearAll('Cálculo descartado. Puedes crear un nuevo nesting.');
   }
 });
 
 function clearAll(message) {
-  pieces = [];
+  files = [];
+  defs = [];
   result = null;
-  params = null;
   $('dxf').value = '';
+  $('fileMsg').textContent = '';
   $('pieces').replaceChildren();
   $('piecesBox').hidden = true;
+  $('defs').replaceChildren();
   $('results').replaceChildren();
   $('summary').replaceChildren();
   $('finalize').disabled = true;

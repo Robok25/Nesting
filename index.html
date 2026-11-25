@@ -8,26 +8,35 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f4f6f8; color: #222; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f4f6f8; color: #222; max-width: 1000px; margin-inline: auto; }
     h1 { font-size: 1.4rem; margin: 0 0 12px; }
-    h2 { font-size: 1.1rem; margin: 16px 0 8px; }
+    h2 { font-size: 1.1rem; margin: 0 0 10px; }
+    h3 { font-size: 1rem; margin: 18px 0 6px; }
     .card { background: #fff; border-radius: 10px; padding: 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
     label { display: flex; flex-direction: column; font-size: .85rem; gap: 4px; }
-    input[type=number], input[type=text] { padding: 8px; font-size: 1rem; border: 1px solid #bbb; border-radius: 6px; }
-    input[type=file] { font-size: .9rem; }
+    label span { color: #444; }
+    input[type=number], input[type=text], select { padding: 8px; font-size: 1rem; border: 1px solid #bbb; border-radius: 6px; width: 100%; box-sizing: border-box; }
+    input[type=file] { font-size: .95rem; }
     table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-    td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #eee; }
-    td input { width: 80px; }
-    button { padding: 10px 14px; font-size: 1rem; border: 0; border-radius: 8px; background: #1f4e79; color: #fff; margin: 4px 4px 4px 0; }
+    td, th { text-align: left; padding: 6px 4px; border-bottom: 1px solid #eee; vertical-align: middle; }
+    td input { min-width: 90px; }
+    td input[type=number] { min-width: 60px; width: 80px; }
+    button { padding: 10px 14px; font-size: 1rem; border: 0; border-radius: 8px; background: #1f4e79; color: #fff; margin: 4px 6px 4px 0; }
     button:disabled { background: #9aa; }
-    button.secondary { background: #777; }
+    button.secondary { background: #557; }
     button.danger { background: #a33; }
+    button.small { padding: 6px 10px; font-size: .9rem; margin-top: 8px; }
+    .defcard { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+    .defhead { font-weight: bold; margin-bottom: 8px; }
     .err { color: #b00020; }
     .ok { color: #2e7d32; }
-    .big { font-size: 1.6rem; font-weight: bold; margin: 4px 0; }
-    .status { color: #555; font-size: .9rem; min-height: 1.2em; }
-    svg.sheet { width: 100%; height: auto; border: 1px solid #ddd; background: #fff; margin-bottom: 14px; }
+    .big { font-size: 1.4rem; font-weight: bold; margin: 4px 0 10px; }
+    .small { font-size: .9rem; color: #444; margin: 8px 0 4px; }
+    .status { color: #555; font-size: .9rem; min-height: 1.2em; margin-top: 8px; }
+    .msg { color: #8a5a00; font-size: .9rem; min-height: 1em; margin-top: 6px; }
+    .tablewrap { overflow-x: auto; }
+    svg.sheet { width: 100%; height: auto; border: 1px solid #ddd; background: #fff; margin-bottom: 10px; }
     svg .bg { fill: #fff; stroke: #333; stroke-width: 2; vector-effect: non-scaling-stroke; }
     svg .piece { fill: rgba(31,78,121,.18); stroke: #1f4e79; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
     svg .label { font-family: sans-serif; fill: #222; text-anchor: middle; }
@@ -37,33 +46,35 @@
   <h1>Nesting de láminas</h1>
 
   <div class="card">
-    <h2>1. Lámina y parámetros</h2>
-    <div class="grid">
-      <label>Calibre / material <input id="calibre" type="text" placeholder="Ej. CAL 16 negro"></label>
-      <label>Ancho lámina (mm) <input id="W" type="number" value="1220" min="1"></label>
-      <label>Alto lámina (mm) <input id="H" type="number" value="2440" min="1"></label>
-      <label>Margen de lámina (mm) <input id="margin" type="number" value="10" min="0"></label>
-      <label>Gap entre piezas (mm) <input id="gap" type="number" value="3" min="0" step="0.1"></label>
-      <label>Ángulos permitidos <input id="angles" type="text" value="0,45,90" placeholder="0,45,90 o 0,15,30,..."></label>
-    </div>
+    <h2>1. Selecciona los DXF a nestear</h2>
+    <input id="dxf" type="file" multiple>
+    <div id="fileMsg" class="msg"></div>
   </div>
 
-  <div class="card">
-    <h2>2. Piezas (DXF)</h2>
-    <input id="dxf" type="file" accept=".dxf" multiple>
-    <div id="piecesBox" hidden>
+  <div class="card" id="piecesBox" hidden>
+    <h2>2. Cantidad, material y calibre por pieza</h2>
+    <div class="tablewrap">
       <table>
-        <thead><tr><th>Pieza</th><th>Área mm²</th><th>Cantidad</th><th>Estado</th></tr></thead>
+        <thead>
+          <tr><th>Pieza</th><th>Área mm²</th><th>Cantidad</th><th>Material</th><th>Calibre</th><th>Estado</th></tr>
+        </thead>
         <tbody id="pieces"></tbody>
       </table>
     </div>
   </div>
 
   <div class="card">
-    <h2>3. Calcular</h2>
+    <h2>3. Láminas disponibles</h2>
+    <p class="small">Agrega un tipo de lámina por cada combinación de material, calibre y medida que tengas. Cada pieza se acomoda solo en las láminas de su mismo material y calibre.</p>
+    <div id="defs"></div>
+    <button id="addDef" class="secondary">+ Agregar tipo de lámina</button>
+  </div>
+
+  <div class="card">
+    <h2>4. Calcular</h2>
     <button id="calc">Calcular nesting</button>
     <button id="finalize" disabled>Finalizar cálculo y generar PDF</button>
-    <button id="discard" class="danger">Descartar</button>
+    <button id="discard" class="danger">Descartar y crear nuevo</button>
     <div id="status" class="status"></div>
   </div>
 
