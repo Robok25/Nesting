@@ -153,6 +153,11 @@ function firstFreePosition(sh, v) {
   for (const it of sh.items) {
     xs.push(it.bb.maxX + g);
     ys.push(it.bb.maxY + g);
+    for (const hole of (it.holes || [])) {
+      const hb = bbox(hole);
+      xs.push(hb.minX + g);
+      ys.push(hb.minY + g);
+    }
   }
   const X = [...new Set(xs)].sort((a, b) => a - b);
   const Y = [...new Set(ys)].sort((a, b) => a - b);
