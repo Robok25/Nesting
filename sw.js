@@ -1,6 +1,6 @@
 // Cachea la app como respaldo offline. Intenta siempre la red primero para que las
 // actualizaciones lleguen. Los DXF y los cálculos nunca se guardan.
-const CACHE = 'nesting-v6';
+const CACHE = 'nesting-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -31,7 +31,7 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return; // jsPDF desde CDN: red normal
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy));
