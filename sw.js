@@ -1,5 +1,5 @@
 // Cachea solo la app (HTML, JS, íconos). Los DXF y los cálculos nunca se guardan.
-const CACHE = 'nesting-v5';
+const CACHE = 'nesting-v6';
 const ASSETS = [
   './',
   './index.html',
