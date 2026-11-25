@@ -1,6 +1,6 @@
 // Cachea la app como respaldo offline. Intenta siempre la red primero para que las
 // actualizaciones lleguen. Los DXF y los cálculos nunca se guardan.
-const CACHE = 'nesting-v5';
+const CACHE = 'nesting-v6';
 const ASSETS = [
   './',
   './index.html',
@@ -9,6 +9,9 @@ const ASSETS = [
   './js/nester.js',
   './manifest.webmanifest',
   './icons/icon.svg',
+  './icons/logo.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {
