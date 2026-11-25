@@ -142,6 +142,7 @@ $('dxf').addEventListener('change', async (e) => {
   if (replaced) messages.push(`${replaced} reemplazado(s)`);
   if (cancelled) messages.push(`${cancelled} duplicado(s) omitido(s)`);
   if (skipped) messages.push(`${skipped} archivo(s) no DXF ignorado(s)`);
+  statusBox.textContent = '';
   $('fileMsg').textContent = messages.join(' · ') || 'No se agregaron archivos.';
   renderPieces();
 });

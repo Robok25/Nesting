@@ -1,6 +1,6 @@
 // Cachea la app como respaldo offline. Intenta siempre la red primero para que las
 // actualizaciones lleguen. Los DXF y los cálculos nunca se guardan.
-const CACHE = 'nesting-v8';
+const CACHE = 'nesting-v9';
 const ASSETS = [
   './',
   './index.html',

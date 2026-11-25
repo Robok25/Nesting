@@ -131,11 +131,12 @@
 <div id="errBox" hidden style="position:fixed;left:8px;right:8px;bottom:8px;z-index:99;background:#7a1212;color:#fff;padding:10px 12px;border-radius:8px;font-size:.85rem;white-space:pre-wrap"></div>
   <script>
     window.addEventListener('error', (e) => {
+      document.getElementById('loading').hidden = true;
       const b = document.getElementById('errBox');
       b.hidden = false;
       b.textContent = 'Error en la app: ' + e.message + ' (línea ' + e.lineno + '). Cierra la app y vuelve a abrirla; si sigue, mándame este texto.';
     });
   </script>
-  <script type="module" src="./js/app.js?v=8"></script>
+  <script type="module" src="./js/app.js?v=9"></script>
 </body>
 </html>
