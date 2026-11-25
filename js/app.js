@@ -48,6 +48,36 @@ function el(tag, props = {}, children = []) {
   return n;
 }
 
+let bulkMaterialValue = '';
+let bulkCalibreValue = '';
+
+function applyBulkValue(kind, value) {
+  if (!value) {
+    alert(`Selecciona un ${kind === 'material' ? 'material' : 'calibre'} antes de aplicar.`);
+    return;
+  }
+  files.forEach((file) => { file[kind] = value; });
+  renderPieces();
+  $('fileMsg').textContent = `${kind === 'material' ? 'Material' : 'Calibre'} "${value}" aplicado a ${files.length} archivo(s).`;
+}
+
+function setupBulkAssignment() {
+  const materialSelect = dropdown('', MATERIAL_OPTIONS, (value) => { bulkMaterialValue = value; }, 'Seleccionar material...');
+  const calibreSelect = dropdown('', CALIBRE_OPTIONS, (value) => { bulkCalibreValue = value; }, 'Seleccionar calibre...');
+  const materialButton = el('button', { type: 'button', className: 'secondary', textContent: 'Aplicar a todas', onclick: () => applyBulkValue('material', bulkMaterialValue) });
+  const calibreButton = el('button', { type: 'button', className: 'secondary', textContent: 'Aplicar a todas', onclick: () => applyBulkValue('calibre', bulkCalibreValue) });
+  $('bulkAssignment').replaceChildren(
+    el('div', { className: 'bulk-control' }, [
+      el('label', {}, [el('span', { textContent: 'Material para todas las piezas' }), materialSelect]),
+      materialButton,
+    ]),
+    el('div', { className: 'bulk-control' }, [
+      el('label', {}, [el('span', { textContent: 'Calibre para todas las piezas' }), calibreSelect]),
+      calibreButton,
+    ])
+  );
+}
+
 function input(type, value, onInput, extra = {}) {
   const n = el('input', { type, value, ...extra });
   n.addEventListener('input', () => onInput(type === 'number' ? parseFloat(n.value) : n.value));
@@ -78,6 +108,8 @@ function dropdown(value, options, onChange, placeholder = 'Seleccionar...', disa
   });
   return n;
 }
+
+setupBulkAssignment();
 
 // ---------- 1 y 2. Archivos y piezas ----------
 $('dxf').addEventListener('change', async (e) => {
@@ -221,11 +253,13 @@ $('calc').addEventListener('click', async () => {
   const loadingMessage = $('loadingMessage');
   $('calc').disabled = true;
   overlay.hidden = false;
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('calculating');
   document.activeElement?.blur();
   result = { sections: [], unplaced: [] };
   try {
     // Permite que el navegador pinte la pantalla de carga antes de iniciar el trabajo.
-    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 80)));
     let groupIndex = 0;
     for (const [k, pcs] of groups) {
       groupIndex++;
@@ -254,6 +288,8 @@ $('calc').addEventListener('click', async () => {
     alert(`Ocurrió un error al calcular el nesting: ${error.message || error}`);
   } finally {
     overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('calculating');
     $('calc').disabled = false;
     $('status').textContent = '';
   }
@@ -346,8 +382,8 @@ function sheetSVG(sh) {
     const pieceW = Math.max(...xs) - Math.min(...xs);
     const pieceH = Math.max(...ys) - Math.min(...ys);
     const minPieceSide = Math.min(pieceW, pieceH);
-    const labelSize = Math.max(unitMode === 'in' ? 0.035 : 0.9,
-      Math.min(minPieceSide * 0.16, Math.min(W, H) * 0.012));
+    const labelSize = Math.max(unitMode === 'in' ? 0.025 : 0.55,
+      Math.min(minPieceSide * 0.085, Math.min(W, H) * 0.0065));
     const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': labelSize.toFixed(3), class: 'label' });
     t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
   }
@@ -398,7 +434,7 @@ function exportPDF() {
   doc.setTextColor(...blue);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
-  doc.text('RESUMEN DE MATERIAL REQUERIDO', 15, y);
+  doc.text('ÍNDICE Y RESUMEN DEL NESTING', 15, y);
   y += 8;
   doc.setTextColor(255, 255, 255);
   doc.setFillColor(...blue);
@@ -413,7 +449,27 @@ function exportPDF() {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   for (const r of rows) {
-    if (y > 275) { doc.addPage(); y = 22; }
+    if (y > 275) {
+      doc.addPage();
+      doc.setFillColor(...blue);
+      doc.rect(0, 0, 210, 22, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text('ÍNDICE DEL NESTING · CONTINUACIÓN', 15, 14);
+      y = 34;
+      doc.setFillColor(...blue);
+      doc.rect(15, y - 5, 180, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.text('MATERIAL / CALIBRE / MEDIDA', 18, y);
+      doc.text('CANT.', 130, y);
+      doc.text('USO', 151, y);
+      doc.text('MERMA', 174, y);
+      y += 8;
+      doc.setTextColor(...dark);
+      doc.setFont('helvetica', 'normal');
+    }
     doc.text(defLabel(r.def), 18, y, { maxWidth: 105 });
     doc.text(String(r.sheets.length), 132, y);
     doc.text(r.sheets.length ? r.util.toFixed(1) + '%' : '—', 151, y);
@@ -424,13 +480,16 @@ function exportPDF() {
   }
   if (result.unplaced.length) {
     y += 3;
+    if (y > 280) { doc.addPage(); y = 25; }
     doc.setTextColor(180, 0, 0);
     doc.text(`No caben: ${result.unplaced.join(', ')}`, 15, y, { maxWidth: 180 });
     doc.setTextColor(0, 0, 0);
   }
 
-  // Una página por lámina, con plano y lista en el mismo estilo de colores de la interfaz.
+  // El índice queda separado de los planos. Después, una página por lámina,
+  // conservando el mismo diseño azul, plano y lista de piezas de la aplicación.
   let pageNo = 0;
+  if (totalSheets > 0) doc.addPage();
   for (const r of rows) {
     r.sheets.forEach((sh, i) => {
       if (pageNo > 0) doc.addPage();
@@ -628,11 +687,13 @@ function exportDXF() {
   }
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const safeProject = project.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
-  const blob = new Blob([dxf], { type: 'application/dxf' });
+  const fileName = `nesting_${safeProject}_${unitMode}_${stamp}.dxf`;
+  const blob = new Blob([dxf], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `nesting_${safeProject}_${unitMode}_${stamp}.dxf`;
+  link.download = fileName;
+  link.type = 'application/dxf';
   link.style.display = 'none';
   document.body.append(link);
   link.click();
