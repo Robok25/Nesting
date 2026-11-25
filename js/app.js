@@ -122,7 +122,7 @@ function renderPieces() {
     body.append(
       el('tr', {}, [
         el('td', { textContent: f.name }),
-        el('td', { textContent: f.geom ? Math.round(f.geom.area).toLocaleString() : '—' }),
+        el('td', { textContent: f.geom ? f.geom.area.toLocaleString('es-MX', { maximumFractionDigits: unitMode === 'in' ? 2 : 0 }) : '—' }),
         el('td', {}, [input('number', f.qty, (v) => (f.qty = Math.max(0, parseInt(v, 10) || 0)), { min: 0, step: 1, disabled })]),
         el('td', {}, [dropdown(f.material, MATERIAL_OPTIONS, (v) => (f.material = v), 'Material...', disabled)]),
         el('td', {}, [dropdown(f.calibre, CALIBRE_OPTIONS, (v) => (f.calibre = v), 'Calibre...', disabled)]),
@@ -323,7 +323,7 @@ function sheetSVG(sh) {
       add('path', { d: hd, fill: '#fff', stroke: '#1f4e79', 'stroke-width': 1.4, 'vector-effect': 'non-scaling-stroke' });
     }
     const [cx, cy] = centroid(it.poly);
-    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 16, 24), class: 'label' });
+    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 16, unitMode === 'in' ? 0.9 : 24), class: 'label' });
     t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
   }
   return svg;
