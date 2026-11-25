@@ -1,6 +1,6 @@
 // Motor de nesting: heurística bottom-left sobre candidatos que "tocan" piezas ya colocadas.
 // Se ejecuta por grupo (material + calibre). Cada grupo usa las láminas definidas para ese grupo.
-// Las piezas se tratan por su contorno exterior; los agujeros no bloquean el acomodo.
+// Los barrenos y recortes interiores son huecos utilizables: se consideran para colisiones y posiciones candidatas.
 
 export function bbox(p) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
