@@ -147,28 +147,55 @@ function variantsFor(inst, def) {
   return inst.cache.get(key);
 }
 
+// Muestra de vértices (máximo 10) para generar posiciones "pegadas" vértice con vértice.
+function sampleVerts(poly, max = 10) {
+  if (poly.length <= max) return poly;
+  const step = poly.length / max;
+  const out = [];
+  for (let i = 0; i < max; i++) out.push(poly[Math.floor(i * step)]);
+  return out;
+}
+
 function firstFreePosition(sh, v) {
   const { W, H, margin, g } = sh.ctx;
   const xs = [margin], ys = [margin];
+  const cands = [];
   for (const it of sh.items) {
-    xs.push(it.bb.maxX + g);
-    ys.push(it.bb.maxY + g);
+    xs.push(it.bb.maxX + g, it.bb.minX - v.bb.maxX - g, it.bb.minX);
+    ys.push(it.bb.maxY + g, it.bb.minY - v.bb.maxY - g, it.bb.minY);
     for (const hole of (it.holes || [])) {
       const hb = bbox(hole);
       xs.push(hb.minX + g);
       ys.push(hb.minY + g);
     }
   }
+  // Posiciones donde un vértice de la pieza toca un vértice de una pieza colocada
+  const pv = sampleVerts(v.poly);
+  for (const it of sh.items) {
+    for (const [ax, ay] of sampleVerts(it.poly)) {
+      for (const [px, py] of pv) {
+        const x = ax - px, y = ay - py;
+        cands.push([x + g, y], [x, y + g], [x + g, y + g], [x - g, y], [x, y - g]);
+      }
+    }
+  }
   const X = [...new Set(xs)].sort((a, b) => a - b);
   const Y = [...new Set(ys)].sort((a, b) => a - b);
-  for (const y of Y) {
-    for (const x of X) {
-      if (x + v.bb.maxX > W - margin || y + v.bb.maxY > H - margin) continue;
-      const bb = { minX: x, minY: y, maxX: x + v.bb.maxX, maxY: y + v.bb.maxY };
+  const all = [];
+  for (const y of Y) for (const x of X) all.push([x, y]);
+  for (const c of cands) all.push(c);
+  all.sort((p, q) => (p[1] - q[1]) || (p[0] - q[0]));
+  for (const [x, y] of all) {
+    if (x < margin || y < margin) continue;
+    if (x + v.bb.maxX > W - margin || y + v.bb.maxY > H - margin) continue;
+    const bb = { minX: x, minY: y, maxX: x + v.bb.maxX, maxY: y + v.bb.maxY };
+    let hit = false;
+    for (const it of sh.items) {
+      if (rectGap(bb, it.bb) >= g) continue;
       const candidate = { outer: translate(v.poly, x, y), holes: v.holes.map((h) => translate(h, x, y)) };
-      if (collides(candidate, bb, sh.items, g)) continue;
-      return { x, y };
+      if (collides(candidate, bb, [it], g)) { hit = true; break; }
     }
+    if (!hit) return { x, y };
   }
   return null;
 }
