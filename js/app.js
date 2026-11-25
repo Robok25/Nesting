@@ -217,24 +217,43 @@ $('calc').addEventListener('click', async () => {
     groups.get(k).push({ name: f.name, outer: f.geom.outer, holes: f.geom.holes || [], area: f.geom.area, qty: f.qty });
   }
 
+  const overlay = $('loadingOverlay');
+  const loadingMessage = $('loadingMessage');
   $('calc').disabled = true;
+  overlay.hidden = false;
+  document.activeElement?.blur();
   result = { sections: [], unplaced: [] };
   try {
+    // Permite que el navegador pinte la pantalla de carga antes de iniciar el trabajo.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    let groupIndex = 0;
     for (const [k, pcs] of groups) {
+      groupIndex++;
       const gdefs = defs
         .filter((d) => keyOf(d.material, d.calibre) === k)
         .map((d) => ({ ...d, angles: parseAngles(d.angles) }));
+      const total = pcs.reduce((sum, pc) => sum + pc.qty, 0);
+      loadingMessage.textContent = `Material/calibre ${groupIndex} de ${groups.size}: ${k.split('|').join(' · ')}. Preparando ${total} piezas…`;
       $('status').textContent = `Acomodando ${k.split('|').join(' · ')}…`;
       const r = await nestGroup({
         pieces: pcs,
         defs: gdefs,
-        onProgress: (i, t) => ($('status').textContent = `${k.split('|').join(' · ')}: pieza ${i} de ${t}`),
+        onProgress: (i, t) => {
+          const pct = t ? Math.round((i / t) * 100) : 100;
+          loadingMessage.textContent = `${k.split('|').join(' · ')}: acomodando pieza ${i} de ${t} (${pct}%)`;
+          $('status').textContent = `Grupo ${groupIndex}/${groups.size} · pieza ${i} de ${t}`;
+        },
       });
-      result.sections.push(...r.sheets.map((s) => s));
+      result.sections.push(...r.sheets.map((sheet) => sheet));
       result.unplaced.push(...r.unplaced.map((n) => `${n} (${k.split('|').join(' · ')})`));
     }
     renderResult();
+  } catch (error) {
+    console.error(error);
+    $('status').textContent = `No se pudo completar el cálculo: ${error.message || error}`;
+    alert(`Ocurrió un error al calcular el nesting: ${error.message || error}`);
   } finally {
+    overlay.hidden = true;
     $('calc').disabled = false;
     $('status').textContent = '';
   }
@@ -323,7 +342,13 @@ function sheetSVG(sh) {
       add('path', { d: hd, fill: '#fff', stroke: '#1f4e79', 'stroke-width': 1.4, 'vector-effect': 'non-scaling-stroke' });
     }
     const [cx, cy] = centroid(it.poly);
-    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 16, unitMode === 'in' ? 0.9 : 24), class: 'label' });
+    const xs = it.poly.map((p) => p[0]), ys = it.poly.map((p) => p[1]);
+    const pieceW = Math.max(...xs) - Math.min(...xs);
+    const pieceH = Math.max(...ys) - Math.min(...ys);
+    const minPieceSide = Math.min(pieceW, pieceH);
+    const labelSize = Math.max(unitMode === 'in' ? 0.035 : 0.9,
+      Math.min(minPieceSide * 0.16, Math.min(W, H) * 0.012));
+    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': labelSize.toFixed(3), class: 'label' });
     t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
   }
   return svg;
@@ -516,47 +541,70 @@ function exportDXF() {
     return;
   }
 
-  const cleanText = (value) => String(value || '').replace(/[\r\n\t]/g, ' ').replace(/[<>]/g, '').trim();
-  const pair = (code, value) => `${code}\n${value}\n`;
-  const layers = [
-    ['SHEETS', 5],
-    ['PARTS', 5],
-    ['HOLES', 1],
-    ['LABELS', 3],
-  ];
+  // DXF ASCII R12 (AC1009): POLYLINE/VERTEX ofrece mayor compatibilidad
+  // con AutoCAD y programas CAM que el LWPOLYLINE minimalista anterior.
+  const cleanText = (value) => String(value || '')
+    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
+    .replace(/[\\r\\n\\t]/g, ' ').replace(/[^\\x20-\\x7E]/g, '?')
+    .replace(/[<>]/g, '').trim();
+  const pair = (code, value) => `${code}\\r\\n${value}\\r\\n`;
+  const fmt = (n) => Number.isFinite(n) ? Number(n).toFixed(6) : '0';
+  const layers = [['SHEETS', 5], ['PARTS', 5], ['HOLES', 1], ['LABELS', 3]];
   let dxf = '';
+
   dxf += pair(0, 'SECTION') + pair(2, 'HEADER');
-  dxf += pair(9, '$ACADVER') + pair(1, 'AC1015');
-  dxf += pair(9, '$INSUNITS') + pair(70, unitMode === 'in' ? 1 : 4);
-  dxf += pair(9, '$MEASUREMENT') + pair(70, unitMode === 'in' ? 0 : 1);
+  dxf += pair(9, '$ACADVER') + pair(1, 'AC1009');
+  dxf += pair(9, '$LUNITS') + pair(70, 2);
+  dxf += pair(9, '$LUPREC') + pair(70, 4);
+  dxf += pair(9, '$INSBASE') + pair(10, 0) + pair(20, 0) + pair(30, 0);
+  // R12 no define $INSUNITS; se conserva la unidad como comentario DXF
+  // y las coordenadas permanecen 1:1 en mm o pulgadas.
+  dxf += pair(999, `UNIDADES DEL DIBUJO: ${unitMode === 'in' ? 'PULGADAS' : 'MILIMETROS'} (1 unidad = 1 ${unitMode === 'in' ? 'in' : 'mm'})`);
   dxf += pair(0, 'ENDSEC');
+
   dxf += pair(0, 'SECTION') + pair(2, 'TABLES');
+  dxf += pair(0, 'TABLE') + pair(2, 'LTYPE') + pair(70, 1);
+  dxf += pair(0, 'LTYPE') + pair(2, 'CONTINUOUS') + pair(70, 0) + pair(3, 'Solid line') + pair(72, 65) + pair(73, 0) + pair(40, 0);
+  dxf += pair(0, 'ENDTAB');
   dxf += pair(0, 'TABLE') + pair(2, 'LAYER') + pair(70, layers.length);
   for (const [name, color] of layers) {
     dxf += pair(0, 'LAYER') + pair(2, name) + pair(70, 0) + pair(62, color) + pair(6, 'CONTINUOUS');
   }
+  dxf += pair(0, 'ENDTAB');
+  dxf += pair(0, 'TABLE') + pair(2, 'STYLE') + pair(70, 1);
+  dxf += pair(0, 'STYLE') + pair(2, 'STANDARD') + pair(70, 0) + pair(40, 0) + pair(41, 1) + pair(50, 0) + pair(71, 0) + pair(42, 2.5) + pair(3, 'txt') + pair(4, '');
   dxf += pair(0, 'ENDTAB') + pair(0, 'ENDSEC');
+
+  dxf += pair(0, 'SECTION') + pair(2, 'BLOCKS') + pair(0, 'ENDSEC');
   dxf += pair(0, 'SECTION') + pair(2, 'ENTITIES');
 
   const addPolyline = (points, layer, offsetX = 0) => {
     if (!points || points.length < 3) return;
-    dxf += pair(0, 'LWPOLYLINE') + pair(8, layer) + pair(90, points.length) + pair(70, 1);
+    dxf += pair(0, 'POLYLINE') + pair(8, layer) + pair(66, 1) + pair(70, 1);
+    dxf += pair(10, 0) + pair(20, 0) + pair(30, 0);
     for (const [x, y] of points) {
-      dxf += pair(10, (x + offsetX).toFixed(6));
-      dxf += pair(20, y.toFixed(6));
+      dxf += pair(0, 'VERTEX') + pair(8, layer);
+      dxf += pair(10, fmt(x + offsetX)) + pair(20, fmt(y)) + pair(30, 0) + pair(70, 0);
     }
+    dxf += pair(0, 'SEQEND') + pair(8, layer);
   };
   const addText = (x, y, height, value) => {
-    dxf += pair(0, 'TEXT') + pair(8, 'LABELS');
-    dxf += pair(10, x.toFixed(6)) + pair(20, y.toFixed(6)) + pair(30, 0);
-    dxf += pair(40, height.toFixed(6)) + pair(1, cleanText(value)) + pair(50, 0);
+    let label = cleanText(value);
+    if (label.length > 240) label = label.slice(0, 237) + '...';
+    dxf += pair(0, 'TEXT') + pair(8, 'LABELS') + pair(10, fmt(x)) + pair(20, fmt(y)) + pair(30, 0);
+    dxf += pair(40, fmt(height)) + pair(1, label) + pair(50, 0) + pair(7, 'STANDARD');
   };
 
   const project = cleanText($('projectName').value) || 'Proyecto';
   const sheetGap = Math.max(unitMode === 'in' ? 4 : 100, ...result.sections.map((sh) => sh.def.gap * 10));
   let offsetX = 0;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   result.sections.forEach((sh, sheetIndex) => {
     const { W, H } = sh.def;
+    minX = Math.min(minX, offsetX);
+    minY = Math.min(minY, 0);
+    maxX = Math.max(maxX, offsetX + W);
+    maxY = Math.max(maxY, H + (unitMode === 'in' ? 1 : 25));
     addPolyline([[0, 0], [W, 0], [W, H], [0, H]], 'SHEETS', offsetX);
     addText(offsetX, H + (unitMode === 'in' ? 1 : 25), unitMode === 'in' ? 0.18 : 4.5,
       `LAMINA ${sheetIndex + 1} | ${sh.def.material} | ${sh.def.calibre} | ${W} x ${H} ${unitLabel()}`);
@@ -564,25 +612,33 @@ function exportDXF() {
       addPolyline(it.poly, 'PARTS', offsetX);
       (it.holes || []).forEach((hole) => addPolyline(hole, 'HOLES', offsetX));
       const [cx, cy] = centroid(it.poly);
-      const labelHeight = Math.max(Math.min(W, H) * 0.012, unitMode === 'in' ? 0.08 : 2.5);
+      const xs = it.poly.map((p) => p[0]), ys = it.poly.map((p) => p[1]);
+      const pieceSize = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      const labelHeight = Math.max(unitMode === 'in' ? 0.035 : 0.9, Math.min(pieceSize * 0.12, Math.min(W, H) * 0.01));
       addText(offsetX + cx, cy, labelHeight, `${index + 1} - ${it.name}`);
     });
     offsetX += W + sheetGap;
   });
   dxf += pair(0, 'ENDSEC') + pair(0, 'EOF');
 
+  // Comprobaciones mínimas antes de entregar el archivo.
+  if (!dxf.startsWith('0\\r\\nSECTION\\r\\n') || !dxf.trimEnd().endsWith('0\\r\\nEOF')) {
+    throw new Error('No se pudo validar la estructura del DXF generado.');
+  }
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const safeProject = project.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
-  const blob = new Blob([dxf], { type: 'application/dxf;charset=utf-8' });
+  const blob = new Blob([dxf], { type: 'application/dxf' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = `nesting_${safeProject}_${unitMode}_${stamp}.dxf`;
+  link.style.display = 'none';
   document.body.append(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
-  $('pdfStatus').textContent = `DXF generado con ${result.sections.length} lámina(s), contornos y recortes interiores. Unidades: ${unitLabel()}.`;
+  // No revocar inmediatamente: algunos navegadores móviles aún no han iniciado la descarga.
+  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+  $('pdfStatus').textContent = `DXF R12 generado: ${result.sections.length} lámina(s), contornos, piezas y huecos. Unidades de dibujo: ${unitLabel()} (escala 1:1).`;
 }
 
 $('exportDxf').addEventListener('click', exportDXF);
