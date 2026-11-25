@@ -72,3 +72,12 @@ MIT. Ver `LICENSE`.
 - Las piezas se ordenan por tamaño de su envolvente exterior (área, lado mayor y lado menor), no por orden de carga.
 - La vista previa conserva una altura fija; la lista de piezas se distribuye en columnas cuando hay espacio. Los identificadores se escalan según el tamaño de cada pieza y no llevan fondo blanco.
 - La exportación genera DXF ASCII R12 (AC1009) con entidades POLYLINE/VERTEX, capas SHEETS, PARTS, HOLES y LABELS, contornos de lámina, piezas y huecos. Las coordenadas se exportan a escala 1:1; la unidad queda indicada en un comentario DXF porque R12 no tiene el campo moderno INSUNITS.
+
+
+## Asignación masiva y ajustes de exportación
+
+- En Archivos y piezas hay controles independientes para aplicar un material o un calibre a todos los DXF cargados.
+- La pantalla de cálculo bloquea la interfaz, muestra el progreso y se libera al terminar o si ocurre un error.
+- La vista previa mantiene altura fija; la lista de piezas se acomoda en columnas y los identificadores son más discretos.
+- El PDF inicia con un índice/resumen y separa los planos en páginas posteriores, con paginación independiente para evitar mezclar el resumen con los resultados.
+- El DXF se descarga con nombre terminado en .dxf, MIME image/vnd.dxf, formato ASCII R12, extensión validada y límites del dibujo definidos en el encabezado.

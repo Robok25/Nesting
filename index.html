@@ -43,24 +43,38 @@
     .result-sheet { display:grid; grid-template-columns:minmax(0, 430px) minmax(0, 1fr); gap:14px; align-items:start; border:1px solid #e0e5e9; border-radius:10px; padding:12px; margin:10px 0 16px; background:#fbfcfd; }
     .sheet-preview { width:100%; height:310px; min-height:310px; max-height:310px; justify-self:center; display:flex; align-items:center; }
     svg.sheet { display:block; width:100%; height:310px; min-height:310px; max-height:310px; border:1px solid #ddd; background:#fff; }
-    .piece-list { list-style:none; counter-reset:piece; margin:10px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); align-content:start; gap:7px; }
-    .piece-list li { counter-increment:piece; display:flex; align-items:center; gap:10px; padding:9px 11px; border:1px solid #e0e7ee; border-radius:8px; background:#fff; font-size:.92rem; overflow-wrap:anywhere; }
-    .piece-list li::before { content:counter(piece); flex:0 0 26px; width:26px; height:26px; display:grid; place-items:center; border-radius:7px; background:#1f4e79; color:#fff; font-weight:700; font-size:.92rem; }
+    .piece-list { list-style:none; counter-reset:piece; margin:10px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); align-content:start; align-items:start; gap:7px; min-width:0; }
+    .piece-list li { counter-increment:piece; display:flex; align-items:center; gap:7px; padding:6px 8px; min-width:0; border:1px solid #e0e7ee; border-radius:8px; background:#fff; font-size:.92rem; overflow-wrap:anywhere; }
+    .piece-list li::before { content:counter(piece); flex:0 0 23px; width:23px; height:23px; display:grid; place-items:center; border-radius:6px; background:#1f4e79; color:#fff; font-weight:700; font-size:.86rem; }
     .project-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
     .result-actions { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; padding:12px; border:1px solid #dce5ed; border-radius:10px; background:#f7fafc; }
     .result-actions button { margin:0; }
     .pdf-note { color:#4b5d6b; font-size:.88rem; margin:8px 0 0; }
+    .bulk-toolbar { display:flex; flex-wrap:wrap; align-items:end; gap:10px; padding:10px; margin:8px 0 12px; background:#f4f7fa; border:1px solid #dce5ed; border-radius:8px; }
+    .bulk-control { display:flex; flex:1 1 230px; gap:8px; align-items:end; min-width:0; }
+    .bulk-control label { flex:1; min-width:0; }
+    .bulk-control button { margin:0; white-space:nowrap; }
+    #loadingOverlay[hidden] { display:none !important; }
+    #loadingOverlay { position:fixed; inset:0; z-index:10000; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(15,28,40,.68); }
+    .loading-card { width:min(360px,100%); padding:22px; border-radius:14px; background:#fff; box-shadow:0 12px 40px rgba(0,0,0,.25); text-align:center; }
+    .loading-spinner { width:42px; height:42px; margin:0 auto 12px; border:4px solid #dce6ef; border-top-color:#1f4e79; border-radius:50%; animation:loading-spin .8s linear infinite; }
+    .loading-track { height:8px; margin-top:14px; overflow:hidden; border-radius:10px; background:#e7edf2; }
+    .loading-track span { display:block; width:35%; height:100%; border-radius:10px; background:#1f4e79; animation:loading-progress 1.2s ease-in-out infinite; }
+    body.calculating { overflow:hidden; }
+    @keyframes loading-spin { to { transform:rotate(360deg); } }
+    @keyframes loading-progress { from { transform:translateX(-110%); } to { transform:translateX(310%); } }
     svg .label { font-weight:600; stroke:none; paint-order:normal; }
     .metric { font-weight:600; }
     .muted { color:#5d6872; font-size:.88rem; }
     @media (max-width:650px) { .result-sheet { grid-template-columns:1fr; } .sheet-preview { max-width:320px; } .piece-list { grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); } .nav { position:static; } }
     svg .bg { fill: #fff; stroke: #333; stroke-width: 2; vector-effect: non-scaling-stroke; }
     svg .piece { fill: rgba(31,78,121,.18); stroke: #1f4e79; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
-    svg .label { font-family: sans-serif; fill: #222; text-anchor: middle; }\n    #loadingOverlay[hidden] { display:none; }\n    #loadingOverlay { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:20px; background:rgba(15,28,40,.58); }\n    .loading-card { width:min(360px,100%); padding:22px; border-radius:14px; background:#fff; box-shadow:0 12px 40px rgba(0,0,0,.25); text-align:center; }\n    .loading-spinner { width:38px; height:38px; margin:0 auto 12px; border:4px solid #dce6ef; border-top-color:#1f4e79; border-radius:50%; animation:loading-spin .8s linear infinite; }\n    .loading-track { height:8px; margin-top:14px; overflow:hidden; border-radius:10px; background:#e7edf2; }\n    .loading-track span { display:block; width:35%; height:100%; border-radius:10px; background:#1f4e79; animation:loading-progress 1.2s ease-in-out infinite; }\n    @keyframes loading-spin { to { transform:rotate(360deg); } }\n    @keyframes loading-progress { from { transform:translateX(-110%); } to { transform:translateX(310%); } }
+    svg .label { font-family: sans-serif; fill: #222; text-anchor: middle; }
   </style>
 </head>
 <body>
-  <div id="loadingOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="loadingTitle"><div class="loading-card"><div class="loading-spinner" aria-hidden="true"></div><strong id="loadingTitle">Calculando nesting…</strong><p id="loadingMessage" class="small">Ordenando piezas y buscando el mejor acomodo disponible.</p><div class="loading-track" aria-hidden="true"><span></span></div><p class="muted">No cierres ni interactúes con la aplicación mientras termina.</p></div></div>\n  <h1>Nesting de láminas</h1>
+  <div id="loadingOverlay" hidden role="dialog" aria-modal="true" aria-labelledby="loadingTitle"><div class="loading-card"><div class="loading-spinner" aria-hidden="true"></div><strong id="loadingTitle">Calculando nesting…</strong><p id="loadingMessage" class="small">Ordenando piezas y buscando el mejor acomodo disponible.</p><div class="loading-track" aria-hidden="true"><span></span></div><p class="muted">No cierres ni interactúes con la aplicación mientras termina.</p></div></div>
+  <h1>Nesting de láminas</h1>
   <nav class="nav" aria-label="Apartados">
     <button type="button" class="active" data-panel="filesPanel">1. Archivos y piezas</button>
     <button type="button" data-panel="sheetsPanel">2. Láminas</button>
@@ -78,7 +92,7 @@
       </div>
     </div>
     <div class="card"><h2>2. Selecciona los DXF a nestear</h2><input id="dxf" type="file" multiple accept=".dxf"><div id="fileMsg" class="msg" aria-live="polite"></div></div>
-    <div class="card" id="piecesBox" hidden><h2>2. Cantidad, material y calibre por pieza</h2><div class="tablewrap"><table><thead><tr><th>Pieza</th><th id="areaHeader">Área mm²</th><th>Cantidad</th><th>Material</th><th>Calibre</th><th>Estado</th><th></th></tr></thead><tbody id="pieces"></tbody></table></div></div>
+    <div class="card" id="piecesBox" hidden><h2>2. Cantidad, material y calibre por pieza</h2><div id="bulkAssignment" class="bulk-toolbar"></div><div class="tablewrap"><table><thead><tr><th>Pieza</th><th id="areaHeader">Área mm²</th><th>Cantidad</th><th>Material</th><th>Calibre</th><th>Estado</th><th></th></tr></thead><tbody id="pieces"></tbody></table></div></div>
   </section>
   <section class="panel" id="sheetsPanel" hidden><div class="card"><h2>3. Láminas disponibles</h2><p class="small">Agrega un tipo de lámina por cada combinación de material, calibre y medida que tengas. Cada pieza se acomoda solo en las láminas de su mismo material y calibre.</p><div id="defs"></div><button id="addDef" class="secondary">+ Agregar tipo de lámina</button><div style="margin-top:14px"><button id="calc">Calcular nesting</button><div id="status" class="status" aria-live="polite"></div></div></div></section>
   <section class="panel" id="resultPanel" hidden><div class="card"><h2>Resultados</h2><div class="result-actions"><button id="finalize" disabled>Guardar PDF</button><button id="exportDxf" disabled>Guardar DXF del nesting</button><button id="discard" class="danger">Crear nuevo cálculo</button></div><p class="pdf-note">Guardar el PDF no borra tu cálculo. Puedes regresar a archivos o láminas, hacer ajustes y volver a generar el documento.</p><div id="pdfStatus" class="status" aria-live="polite"></div><div id="summary"></div><div id="results"></div></div></section>
