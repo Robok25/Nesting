@@ -189,6 +189,7 @@ function summaryRows() {
 }
 
 function renderResult() {
+  $('pdfStatus').textContent = '';
   const out = $('results');
   out.replaceChildren();
   const rows = summaryRows();
@@ -430,6 +431,10 @@ function clearAll(message) {
   defs = [];
   result = null;
   $('dxf').value = '';
+  $('projectName').value = '';
+  $('assemblyName').value = '';
+  $('preparedBy').value = '';
+  $('pdfStatus').textContent = '';
   $('fileMsg').textContent = '';
   $('pieces').replaceChildren();
   $('piecesBox').hidden = true;
