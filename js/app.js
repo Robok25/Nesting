@@ -410,7 +410,8 @@ function exportPDF() {
   let pageNo = 0;
   for (const r of rows) {
     r.sheets.forEach((sh, i) => {
-      if (pageNo > 0) doc.addPage();
+      // Página 1 = datos generales; cada lámina empieza en su propia página.
+      doc.addPage();
       pageNo++;
       const { W, H } = sh.def;
       const factor = unitToMm();
@@ -505,6 +506,15 @@ function exportPDF() {
   }
   // Si no hubo láminas, deja un aviso en la primera página
   if (pageNo === 0) doc.text('Sin láminas calculadas.', 15, 60);
+  // Numeración de páginas en todo el documento
+  const total = doc.getNumberOfPages();
+  for (let pg = 1; pg <= total; pg++) {
+    doc.setPage(pg);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(110, 120, 130);
+    doc.text(`Página ${pg} de ${total}`, 195, 292, { align: 'right' });
+  }
 
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const safeProject = project.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
