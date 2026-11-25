@@ -442,9 +442,6 @@ function exportPDF() {
   // Si no hubo láminas, deja un aviso en la primera página
   if (pageNo === 0) doc.text('Sin láminas calculadas.', 15, 60);
 
-  doc.setTextColor(110, 120, 130);
-  doc.setFontSize(7);
-  doc.text('Documento de apoyo para cotización y planeación de corte. Verificar material, espesor y medidas antes de liberar a producción.', 15, 285, { maxWidth: 180 });
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const safeProject = project.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
   doc.save(`nesting_${safeProject}_${stamp}.pdf`);
