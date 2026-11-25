@@ -8,7 +8,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f4f6f8; color: #222; max-width: 1000px; margin-inline: auto; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f4f6f8; color: #222; max-width: 1200px; margin-inline: auto; }
     h1 { font-size: 1.4rem; margin: 0 0 12px; }
     h2 { font-size: 1.1rem; margin: 0 0 10px; }
     h3 { font-size: 1rem; margin: 18px 0 6px; }
@@ -36,7 +36,18 @@
     .status { color: #555; font-size: .9rem; min-height: 1.2em; margin-top: 8px; }
     .msg { color: #8a5a00; font-size: .9rem; min-height: 1em; margin-top: 6px; }
     .tablewrap { overflow-x: auto; }
-    svg.sheet { width: 100%; height: auto; border: 1px solid #ddd; background: #fff; margin-bottom: 10px; }
+    .nav { display:flex; gap:8px; flex-wrap:wrap; position:sticky; top:0; z-index:5; background:#f4f6f8; padding:8px 0; margin-bottom:8px; }
+    .nav button { flex:1; min-width:125px; margin:0; }
+    .nav button.active { background:#163954; outline:2px solid #8bb4d4; }
+    .panel[hidden] { display:none; }
+    .result-sheet { display:grid; grid-template-columns:minmax(180px, 1.1fr) minmax(180px, .9fr); gap:14px; align-items:start; border:1px solid #e0e5e9; border-radius:10px; padding:12px; margin:10px 0 16px; background:#fbfcfd; }
+    .sheet-preview { max-width:430px; width:100%; justify-self:center; }
+    svg.sheet { display:block; width:100%; height:auto; max-height:310px; border:1px solid #ddd; background:#fff; }
+    .piece-list { margin:0; padding-left:22px; font-size:.9rem; }
+    .piece-list li { margin:5px 0; }
+    .metric { font-weight:600; }
+    .muted { color:#5d6872; font-size:.88rem; }
+    @media (max-width:650px) { .result-sheet { grid-template-columns:1fr; } .sheet-preview { max-width:320px; } .nav { position:static; } }
     svg .bg { fill: #fff; stroke: #333; stroke-width: 2; vector-effect: non-scaling-stroke; }
     svg .piece { fill: rgba(31,78,121,.18); stroke: #1f4e79; stroke-width: 1.2; vector-effect: non-scaling-stroke; }
     svg .label { font-family: sans-serif; fill: #222; text-anchor: middle; }
@@ -44,45 +55,19 @@
 </head>
 <body>
   <h1>Nesting de láminas</h1>
-
-  <div class="card">
-    <h2>1. Selecciona los DXF a nestear</h2>
-    <input id="dxf" type="file" multiple>
-    <div id="fileMsg" class="msg"></div>
-  </div>
-
-  <div class="card" id="piecesBox" hidden>
-    <h2>2. Cantidad, material y calibre por pieza</h2>
-    <div class="tablewrap">
-      <table>
-        <thead>
-          <tr><th>Pieza</th><th>Área mm²</th><th>Cantidad</th><th>Material</th><th>Calibre</th><th>Estado</th></tr>
-        </thead>
-        <tbody id="pieces"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>3. Láminas disponibles</h2>
-    <p class="small">Agrega un tipo de lámina por cada combinación de material, calibre y medida que tengas. Cada pieza se acomoda solo en las láminas de su mismo material y calibre.</p>
-    <div id="defs"></div>
-    <button id="addDef" class="secondary">+ Agregar tipo de lámina</button>
-  </div>
-
-  <div class="card">
-    <h2>4. Calcular</h2>
-    <button id="calc">Calcular nesting</button>
-    <button id="finalize" disabled>Finalizar cálculo y generar PDF</button>
-    <button id="discard" class="danger">Descartar y crear nuevo</button>
-    <div id="status" class="status"></div>
-  </div>
-
-  <div class="card">
-    <h2>Resultado</h2>
-    <div id="summary"></div>
-    <div id="results"></div>
-  </div>
+  <nav class="nav" aria-label="Apartados">
+    <button type="button" class="active" data-panel="filesPanel">1. Archivos y piezas</button>
+    <button type="button" data-panel="sheetsPanel">2. Láminas</button>
+    <button type="button" data-panel="calcPanel">3. Cálculo</button>
+    <button type="button" data-panel="resultPanel">4. Resultados</button>
+  </nav>
+  <section class="panel" id="filesPanel">
+    <div class="card"><h2>1. Selecciona los DXF a nestear</h2><input id="dxf" type="file" multiple accept=".dxf"><div id="fileMsg" class="msg" aria-live="polite"></div></div>
+    <div class="card" id="piecesBox" hidden><h2>2. Cantidad, material y calibre por pieza</h2><div class="tablewrap"><table><thead><tr><th>Pieza</th><th>Área mm²</th><th>Cantidad</th><th>Material</th><th>Calibre</th><th>Estado</th><th></th></tr></thead><tbody id="pieces"></tbody></table></div></div>
+  </section>
+  <section class="panel" id="sheetsPanel" hidden><div class="card"><h2>3. Láminas disponibles</h2><p class="small">Agrega un tipo de lámina por cada combinación de material, calibre y medida que tengas. Cada pieza se acomoda solo en las láminas de su mismo material y calibre.</p><div id="defs"></div><button id="addDef" class="secondary">+ Agregar tipo de lámina</button></div></section>
+  <section class="panel" id="calcPanel" hidden><div class="card"><h2>4. Calcular</h2><button id="calc">Calcular nesting</button><button id="finalize" disabled>Finalizar cálculo y generar PDF</button><button id="discard" class="danger">Descartar y crear nuevo</button><div id="status" class="status" aria-live="polite"></div></div></section>
+  <section class="panel" id="resultPanel" hidden><div class="card"><h2>Resultados</h2><div id="summary"></div><div id="results"></div></div></section>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script type="module" src="./js/app.js"></script>
