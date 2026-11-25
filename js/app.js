@@ -37,12 +37,15 @@ $('dxf').addEventListener('change', async (e) => {
   e.target.value = '';
   let added = 0, replaced = 0, skipped = 0, cancelled = 0;
   for (const file of selected) {
-    if (!/\\.dxf$/i.test(file.name)) { skipped++; continue; }
-    const name = file.name.replace(/\\.dxf$/i, '');
+    if (!/\.dxf$/i.test(file.name)) { skipped++; continue; }
+    const name = file.name.replace(/\.dxf$/i, '');
     const index = files.findIndex((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
     let previous = null;
     if (index >= 0) {
-      if (!confirm(`Ya existe "${name}".\\n\\n¿Deseas reemplazar el DXF existente?\\nAceptar = reemplazar · Cancelar = omitir este archivo`)) { cancelled++; continue; }
+      if (!confirm(`Ya existe "${name}".\
+\
+¿Deseas reemplazar el DXF existente?\
+Aceptar = reemplazar · Cancelar = omitir este archivo`)) { cancelled++; continue; }
       previous = files[index];
     }
     let entry;
@@ -182,7 +185,8 @@ function summaryRows() {
     const sheets = result.sections.filter((s) => s.def.id === d.id);
     const used = sheets.reduce((a, s) => a + s.items.reduce((b, it) => b + it.area, 0), 0);
     const total = sheets.length * d.W * d.H;
-    const util = total ? (used / total) * 100 : 0;\n    return { def: d, sheets, util, waste: Math.max(0, 100 - util) };
+    const util = total ? (used / total) * 100 : 0;
+    return { def: d, sheets, util, waste: Math.max(0, 100 - util) };
   });
 }
 
@@ -200,7 +204,8 @@ function renderResult() {
         el('tr', {}, [
           el('td', { textContent: defLabel(r.def) }),
           el('td', { textContent: String(r.sheets.length) }),
-          el('td', { textContent: r.sheets.length ? `${r.util.toFixed(1)}%` : '—' }),\n          el('td', { textContent: r.sheets.length ? `${r.waste.toFixed(1)}%` : '—' }),
+          el('td', { textContent: r.sheets.length ? `${r.util.toFixed(1)}%` : '—' }),
+          el('td', { textContent: r.sheets.length ? `${r.waste.toFixed(1)}%` : '—' }),
         ])
       )),
     ])
@@ -251,7 +256,8 @@ function sheetSVG(sh) {
       .join(' ') + ' Z';
     add('path', { d, class: 'piece' });
     const [cx, cy] = centroid(it.poly);
-    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 55, 5), class: 'label' });\n    t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
+    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 55, 5), class: 'label' });
+    t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
   }
   return svg;
 }
@@ -299,7 +305,8 @@ function exportPDF() {
       doc.setFontSize(11);
       doc.text(`${defLabel(sh.def)} — Lámina ${i + 1} de ${r.sheets.length}`, 15, 20);
       doc.setFontSize(9);
-      const sheetUse = sh.items.reduce((a, it) => a + it.area, 0) / (W * H) * 100;\n      doc.text(`Uso: ${sheetUse.toFixed(1)}% | Merma: ${Math.max(0, 100 - sheetUse).toFixed(1)}% | Margen: ${sh.def.margin} mm | Gap: ${sh.def.gap} mm`, 15, 26);
+      const sheetUse = sh.items.reduce((a, it) => a + it.area, 0) / (W * H) * 100;
+      doc.text(`Uso: ${sheetUse.toFixed(1)}% | Merma: ${Math.max(0, 100 - sheetUse).toFixed(1)}% | Margen: ${sh.def.margin} mm | Gap: ${sh.def.gap} mm`, 15, 26);
 
       doc.setLineWidth(0.4);
       doc.rect(X(0), Y(H), W * scale, H * scale);
@@ -311,7 +318,8 @@ function exportPDF() {
           doc.line(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]));
         }
         const [cx, cy] = centroid(p);
-        doc.setFontSize(7);\n        doc.text(String(sh.items.indexOf(it) + 1), X(cx), Y(cy), { align: 'center' });
+        doc.setFontSize(7);
+        doc.text(String(sh.items.indexOf(it) + 1), X(cx), Y(cy), { align: 'center' });
       }
 
       const counts = {};
