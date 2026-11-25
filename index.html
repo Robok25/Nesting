@@ -43,8 +43,14 @@
     .result-sheet { display:grid; grid-template-columns:minmax(180px, 1.1fr) minmax(180px, .9fr); gap:14px; align-items:start; border:1px solid #e0e5e9; border-radius:10px; padding:12px; margin:10px 0 16px; background:#fbfcfd; }
     .sheet-preview { max-width:430px; width:100%; justify-self:center; }
     svg.sheet { display:block; width:100%; height:auto; max-height:310px; border:1px solid #ddd; background:#fff; }
-    .piece-list { margin:0; padding-left:22px; font-size:.9rem; }
-    .piece-list li { margin:5px 0; }
+    .piece-list { list-style:none; counter-reset:piece; margin:10px 0 0; padding:0; display:grid; gap:7px; }
+    .piece-list li { counter-increment:piece; display:flex; align-items:center; gap:10px; padding:9px 11px; border:1px solid #e0e7ee; border-radius:8px; background:#fff; font-size:.92rem; overflow-wrap:anywhere; }
+    .piece-list li::before { content:counter(piece); flex:0 0 28px; height:28px; display:grid; place-items:center; border-radius:7px; background:#1f4e79; color:#fff; font-weight:800; font-size:.88rem; }
+    .project-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }
+    .result-actions { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; padding:12px; border:1px solid #dce5ed; border-radius:10px; background:#f7fafc; }
+    .result-actions button { margin:0; }
+    .pdf-note { color:#4b5d6b; font-size:.88rem; margin:8px 0 0; }
+    svg .label { font-weight:900; paint-order:stroke; stroke:#fff; stroke-width:3px; stroke-linejoin:round; }
     .metric { font-weight:600; }
     .muted { color:#5d6872; font-size:.88rem; }
     @media (max-width:650px) { .result-sheet { grid-template-columns:1fr; } .sheet-preview { max-width:320px; } .nav { position:static; } }
@@ -58,16 +64,22 @@
   <nav class="nav" aria-label="Apartados">
     <button type="button" class="active" data-panel="filesPanel">1. Archivos y piezas</button>
     <button type="button" data-panel="sheetsPanel">2. Láminas</button>
-    <button type="button" data-panel="calcPanel">3. Cálculo</button>
-    <button type="button" data-panel="resultPanel">4. Resultados</button>
+    <button type="button" data-panel="resultPanel">3. Resultados</button>
   </nav>
   <section class="panel" id="filesPanel">
-    <div class="card"><h2>1. Selecciona los DXF a nestear</h2><input id="dxf" type="file" multiple accept=".dxf"><div id="fileMsg" class="msg" aria-live="polite"></div></div>
+    <div class="card">
+      <h2>1. Datos del proyecto</h2>
+      <div class="project-grid">
+        <label><span>Nombre del proyecto</span><input id="projectName" type="text" placeholder="Ej. Estructura transportadora"></label>
+        <label><span>Ensamble / conjunto</span><input id="assemblyName" type="text" placeholder="Ej. Bastidor principal"></label>
+        <label><span>Elaboró</span><input id="preparedBy" type="text" placeholder="Nombre de quien elaboró"></label>
+      </div>
+    </div>
+    <div class="card"><h2>2. Selecciona los DXF a nestear</h2><input id="dxf" type="file" multiple accept=".dxf"><div id="fileMsg" class="msg" aria-live="polite"></div></div>
     <div class="card" id="piecesBox" hidden><h2>2. Cantidad, material y calibre por pieza</h2><div class="tablewrap"><table><thead><tr><th>Pieza</th><th>Área mm²</th><th>Cantidad</th><th>Material</th><th>Calibre</th><th>Estado</th><th></th></tr></thead><tbody id="pieces"></tbody></table></div></div>
   </section>
-  <section class="panel" id="sheetsPanel" hidden><div class="card"><h2>3. Láminas disponibles</h2><p class="small">Agrega un tipo de lámina por cada combinación de material, calibre y medida que tengas. Cada pieza se acomoda solo en las láminas de su mismo material y calibre.</p><div id="defs"></div><button id="addDef" class="secondary">+ Agregar tipo de lámina</button></div></section>
-  <section class="panel" id="calcPanel" hidden><div class="card"><h2>4. Calcular</h2><button id="calc">Calcular nesting</button><button id="finalize" disabled>Finalizar cálculo y generar PDF</button><button id="discard" class="danger">Descartar y crear nuevo</button><div id="status" class="status" aria-live="polite"></div></div></section>
-  <section class="panel" id="resultPanel" hidden><div class="card"><h2>Resultados</h2><div id="summary"></div><div id="results"></div></div></section>
+  <section class="panel" id="sheetsPanel" hidden><div class="card"><h2>3. Láminas disponibles</h2><p class="small">Agrega un tipo de lámina por cada combinación de material, calibre y medida que tengas. Cada pieza se acomoda solo en las láminas de su mismo material y calibre.</p><div id="defs"></div><button id="addDef" class="secondary">+ Agregar tipo de lámina</button><div style="margin-top:14px"><button id="calc">Calcular nesting</button><div id="status" class="status" aria-live="polite"></div></div></div></section>
+  <section class="panel" id="resultPanel" hidden><div class="card"><h2>Resultados</h2><div class="result-actions"><button id="finalize" disabled>Guardar PDF</button><button id="discard" class="danger">Crear nuevo cálculo</button></div><p class="pdf-note">Guardar el PDF no borra tu cálculo. Puedes regresar a archivos o láminas, hacer ajustes y volver a generar el documento.</p><div id="summary"></div><div id="results"></div></div></section>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script type="module" src="./js/app.js"></script>
