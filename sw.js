@@ -1,5 +1,6 @@
-// Cachea solo la app (HTML, JS, íconos). Los DXF y los cálculos nunca se guardan.
-const CACHE = 'nesting-v4';
+// Cachea la app como respaldo offline. Intenta siempre la red primero para que las
+// actualizaciones lleguen. Los DXF y los cálculos nunca se guardan.
+const CACHE = 'nesting-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +9,9 @@ const ASSETS = [
   './js/nester.js',
   './manifest.webmanifest',
   './icons/icon.svg',
+  './icons/logo.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
 ];
 
 self.addEventListener('install', (e) => {
@@ -17,9 +21,7 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    )
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
   );
   self.clients.claim();
 });
@@ -27,8 +29,14 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
-  if (url.origin !== self.location.origin) return; // CDN de jsPDF: red normal
+  if (url.origin !== self.location.origin) return; // jsPDF desde CDN: red normal
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request))
+    fetch(e.request, { cache: 'no-cache' })
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });

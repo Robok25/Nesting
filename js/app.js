@@ -25,6 +25,8 @@ let files = [];   // { name, qty, material, calibre, geom, error }
 let defs = [];    // { id, material, calibre, W, H, margin, gap, angles }
 let result = null;
 let nextId = 1;
+let labelScale = 1;   // 0.5 a 1.5, relativo al tamaño de cada pieza
+let showLabels = true;
 let unitMode = 'mm'; // La unidad es única para todos los DXF y láminas de esta sesión.
 
 const unitLabel = () => unitMode === 'in' ? 'in' : 'mm';
@@ -79,6 +81,27 @@ function dropdown(value, options, onChange, placeholder = 'Seleccionar...', disa
   return n;
 }
 
+// ---------- Aplicar material o calibre a todas las piezas ----------
+function fillSelect(id, options) {
+  const sel = $(id);
+  sel.append(el('option', { value: '', textContent: 'Seleccionar...' }));
+  options.forEach((o) => sel.append(el('option', { value: o, textContent: o })));
+}
+fillSelect('bulkMaterial', MATERIAL_OPTIONS);
+fillSelect('bulkCalibre', CALIBRE_OPTIONS);
+
+function applyBulk(field, value, label) {
+  if (!value) { alert(`Elige primero un ${label}.`); return; }
+  const targets = files.filter((f) => !f.error);
+  if (!targets.length) { alert('No hay DXF cargados.'); return; }
+  if (!confirm(`¿Asignar ${label} "${value}" a las ${targets.length} pieza(s)? Se reemplazan los valores actuales.`)) return;
+  targets.forEach((f) => (f[field] = value));
+  renderPieces();
+  $('fileMsg').textContent = `${label} "${value}" aplicado a ${targets.length} pieza(s).`;
+}
+$('bulkMaterialBtn').addEventListener('click', () => applyBulk('material', $('bulkMaterial').value, 'material'));
+$('bulkCalibreBtn').addEventListener('click', () => applyBulk('calibre', $('bulkCalibre').value, 'calibre'));
+
 // ---------- 1 y 2. Archivos y piezas ----------
 $('dxf').addEventListener('change', async (e) => {
   const selected = Array.from(e.target.files || []);
@@ -94,6 +117,8 @@ $('dxf').addEventListener('change', async (e) => {
       if (!answer) { cancelled++; continue; }
       previous = files[index];
     }
+    $('fileMsg').textContent = `Leyendo ${name}…`;
+    await new Promise((r) => setTimeout(r, 0));
     let entry;
     try {
       entry = { name, qty: previous ? previous.qty : 1, material: previous ? previous.material : '', calibre: previous ? previous.calibre : '', geom: parseDXF(await file.text()), error: null };
@@ -255,6 +280,16 @@ function renderResult() {
   $('pdfStatus').textContent = '';
   const out = $('results');
   out.replaceChildren();
+  const ctl = el('div', { className: 'label-controls' });
+  const range = el('input', { type: 'range', min: 0.5, max: 1.5, step: 0.1, value: labelScale });
+  range.addEventListener('change', () => { labelScale = parseFloat(range.value); renderResult(); });
+  const chk = el('input', { type: 'checkbox', checked: showLabels });
+  chk.addEventListener('change', () => { showLabels = chk.checked; renderResult(); });
+  ctl.append(
+    el('label', {}, [el('span', { textContent: 'Tamaño de números (se ajusta a cada pieza)' }), range]),
+    el('label', { className: 'inline' }, [chk, el('span', { textContent: 'Mostrar números' })])
+  );
+  out.append(ctl);
   const rows = summaryRows();
   const totalSheets = rows.reduce((a, r) => a + r.sheets.length, 0);
 
@@ -320,193 +355,267 @@ function sheetSVG(sh) {
     add('path', { d, class: 'piece' });
     for (const hole of (it.holes || [])) {
       const hd = hole.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)} ${(H - y).toFixed(2)}`).join(' ') + ' Z';
-      add('path', { d: hd, fill: '#fff', stroke: '#1f4e79', 'stroke-width': 1.4, 'vector-effect': 'non-scaling-stroke' });
+      add('path', { d: hd, fill: '#fff', stroke: '#0066b3', 'stroke-width': 1.4, 'vector-effect': 'non-scaling-stroke' });
     }
-    const [cx, cy] = centroid(it.poly);
-    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 16, unitMode === 'in' ? 0.9 : 24), class: 'label' });
-    t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
+    if (showLabels && labelScale > 0) {
+      const [cx, cy] = centroid(it.poly);
+      const minDim = Math.min(it.bb.maxX - it.bb.minX, it.bb.maxY - it.bb.minY);
+      const base = Math.min(W, H);
+      const fs = Math.max(base * 0.008, Math.min(minDim * 0.42, base / 14)) * labelScale;
+      if (fs >= base * 0.004) {
+        const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': fs.toFixed(2), class: 'label' });
+        t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
+      }
+    }
   }
   return svg;
 }
 
 // ---------- PDF ----------
+// Página 1: datos generales y resumen. Páginas siguientes: una por lámina con plano y lista.
 function exportPDF() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const rows = summaryRows();
   const totalSheets = rows.reduce((a, r) => a + r.sheets.length, 0);
-
   const project = $('projectName')?.value.trim() || 'Proyecto sin nombre';
   const assembly = $('assemblyName')?.value.trim() || 'No especificado';
   const prepared = $('preparedBy')?.value.trim() || 'No especificado';
-  const blue = [31, 78, 121];
-  const dark = [31, 45, 58];
-  const light = [239, 244, 248];
-  doc.setFillColor(...blue);
-  doc.rect(0, 0, 210, 34, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(19);
-  doc.text('REPORTE DE NESTING', 15, 16);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text('OPTIMIZACIÓN DE CORTE DE LÁMINA', 15, 24);
-  doc.setTextColor(...dark);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.text(project, 15, 45, { maxWidth: 180 });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`Ensamble: ${assembly}`, 15, 54, { maxWidth: 180 });
-  doc.text(`Elaboró: ${prepared}`, 15, 60);
-  doc.text(`Fecha de emisión: ${new Date().toLocaleString()}`, 15, 66);
-  doc.setFillColor(...light);
-  doc.roundedRect(15, 73, 180, 20, 3, 3, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text(`Láminas requeridas: ${totalSheets}`, 22, 85);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`Piezas procesadas: ${files.filter(f => f.geom && f.qty > 0).reduce((a, f) => a + f.qty, 0)}`, 112, 85);
-  doc.text(`Unidades de trabajo: ${unitLabel()}`, 22, 90);
-  let y = 105;
-  doc.setTextColor(...blue);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text('RESUMEN DE MATERIAL REQUERIDO', 15, y);
-  y += 8;
-  doc.setTextColor(255, 255, 255);
-  doc.setFillColor(...blue);
-  doc.rect(15, y - 5, 180, 8, 'F');
-  doc.setFontSize(8);
-  doc.text('MATERIAL / CALIBRE / MEDIDA', 18, y);
-  doc.text('CANT.', 130, y);
-  doc.text('USO', 151, y);
-  doc.text('MERMA', 174, y);
-  y += 8;
-  doc.setTextColor(...dark);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  for (const r of rows) {
-    if (y > 275) { doc.addPage(); y = 22; }
-    doc.text(defLabel(r.def), 18, y, { maxWidth: 105 });
-    doc.text(String(r.sheets.length), 132, y);
-    doc.text(r.sheets.length ? r.util.toFixed(1) + '%' : '—', 151, y);
-    doc.text(r.sheets.length ? r.waste.toFixed(1) + '%' : '—', 174, y);
-    doc.setDrawColor(220, 228, 235);
-    doc.line(15, y + 3, 195, y + 3);
-    y += 9;
-  }
+  const stamp = new Date().toLocaleString();
+  const usedFiles = files.filter((f) => f.geom && f.qty > 0);
+  const totalPieces = usedFiles.reduce((a, f) => a + f.qty, 0);
+
+  const blue = [0, 102, 179], dark = [11, 31, 51], muted = [98, 110, 122];
+  const light = [234, 244, 252], rule = [214, 223, 232];
+  const PW = 210, M = 14, CW = PW - 2 * M, BOTTOM = 276, FOOT_Y = 289;
+
+  const setText = (size, style, color) => {
+    doc.setFont('helvetica', style);
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+  };
+  // Recorta un texto de una línea para que quepa en el ancho dado.
+  const fit = (t, w) => {
+    const s0 = String(t);
+    if (doc.getTextWidth(s0) <= w) return s0;
+    let s = s0;
+    while (s.length > 1 && doc.getTextWidth(s + '…') > w) s = s.slice(0, -1);
+    return s + '…';
+  };
+  const band = (title, sub) => {
+    doc.setFillColor(...blue);
+    doc.rect(0, 0, PW, 26, 'F');
+    setText(13, 'bold', [255, 255, 255]);
+    doc.text(fit(title, CW), M, 11);
+    setText(8.5, 'normal', [255, 255, 255]);
+    doc.text(fit(sub, CW), M, 19);
+  };
+  const newPage = (title, sub) => {
+    doc.addPage();
+    band(title, sub);
+    return 36;
+  };
+  // Si el bloque no cabe en la hoja actual, pasa a una hoja nueva y regresa la posición inicial.
+  const ensure = (y, h, title, sub) => (y + h > BOTTOM ? newPage(title, sub) : y);
+
+  // Tabla con encabezado que se repite al cambiar de hoja.
+  const table = (cols, data, startY, title, sub) => {
+    let ty = startY;
+    const drawHeader = () => {
+      doc.setFillColor(...blue);
+      doc.rect(M, ty - 4.5, CW, 7, 'F');
+      setText(7.5, 'bold', [255, 255, 255]);
+      cols.forEach((c) => doc.text(c.label, c.x, ty, { align: c.align }));
+      ty += 7;
+    };
+    drawHeader();
+    for (const row of data) {
+      setText(8, 'normal', dark);
+      const cells = cols.map((c, i) => doc.splitTextToSize(String(row[i]), c.w));
+      const h = Math.max(...cells.map((l) => l.length)) * 3.8 + 3;
+      if (ty + h > BOTTOM) {
+        newPage(title, sub);
+        ty = 36;
+        drawHeader();
+        setText(8, 'normal', dark);
+      }
+      cells.forEach((lines, i) => doc.text(lines, cols[i].x, ty + 3.5, { align: cols[i].align }));
+      doc.setDrawColor(...rule);
+      doc.line(M, ty + h - 0.5, PW - M, ty + h - 0.5);
+      ty += h;
+    }
+    return ty + 4;
+  };
+
+  // ---------- Página 1: datos generales ----------
+  band('REPORTE DE NESTING', 'Optimización de corte de lámina');
+  let y = 38;
+  setText(16, 'bold', dark);
+  doc.text(fit(project, CW), M, y);
+  y += 9;
+
+  const info = [
+    ['Ensamble', assembly], ['Elaboró', prepared],
+    ['Fecha de emisión', stamp], ['Unidades de trabajo', unitLabel()],
+  ];
+  info.forEach(([label, value], idx) => {
+    const x = M + (idx % 2) * (CW / 2);
+    const yy = y + Math.floor(idx / 2) * 12;
+    setText(7.5, 'normal', muted);
+    doc.text(label, x, yy);
+    setText(9.5, 'normal', dark);
+    doc.text(fit(value, CW / 2 - 6), x, yy + 5);
+  });
+  y += 26;
+
+  // Indicadores
+  const sheetArea = rows.reduce((a, r) => a + r.sheets.length * r.def.W * r.def.H, 0);
+  const usedArea = rows.reduce((a, r) => a + r.sheets.reduce((b, s) => b + s.items.reduce((c, it) => c + it.area, 0), 0), 0);
+  const overallUse = sheetArea ? (usedArea / sheetArea) * 100 : 0;
+  const kpis = [
+    ['Láminas requeridas', String(totalSheets)],
+    ['Piezas a fabricar', String(totalPieces)],
+    ['Uso promedio', `${overallUse.toFixed(1)}%`],
+  ];
+  const bw = (CW - 8) / 3;
+  kpis.forEach(([label, value], idx) => {
+    const x = M + idx * (bw + 4);
+    doc.setFillColor(...light);
+    doc.roundedRect(x, y, bw, 22, 3, 3, 'F');
+    setText(7.5, 'normal', muted);
+    doc.text(label, x + 5, y + 7);
+    setText(15, 'bold', blue);
+    doc.text(value, x + 5, y + 17);
+  });
+  y += 32;
+
+  // Material requerido por tipo de lámina
+  setText(10.5, 'bold', blue);
+  doc.text('MATERIAL REQUERIDO', M, y);
+  const matCols = [
+    { label: 'Tipo de lámina', x: M + 3, w: 96, align: 'left' },
+    { label: 'Láminas', x: M + 121, w: 20, align: 'right' },
+    { label: 'Uso', x: M + 146, w: 14, align: 'right' },
+    { label: 'Merma', x: PW - M - 3, w: 18, align: 'right' },
+  ];
+  const matData = rows.map((r) => [
+    defLabel(r.def),
+    String(r.sheets.length),
+    r.sheets.length ? `${r.util.toFixed(1)}%` : '—',
+    r.sheets.length ? `${r.waste.toFixed(1)}%` : '—',
+  ]);
+  y = table(matCols, matData, y + 8, 'REPORTE DE NESTING', 'Material requerido (continuación)');
+
+  // Piezas del proyecto
+  y = ensure(y, 20, 'REPORTE DE NESTING', 'Piezas del proyecto (continuación)');
+  setText(10.5, 'bold', blue);
+  doc.text('PIEZAS DEL PROYECTO', M, y);
+  const pieceCols = [
+    { label: 'Pieza', x: M + 3, w: 72, align: 'left' },
+    { label: 'Material', x: M + 78, w: 44, align: 'left' },
+    { label: 'Calibre', x: M + 124, w: 40, align: 'left' },
+    { label: 'Cant.', x: PW - M - 3, w: 14, align: 'right' },
+  ];
+  const pieceData = usedFiles.map((f) => [f.name, f.material, f.calibre, String(f.qty)]);
+  y = table(pieceCols, pieceData, y + 8, 'REPORTE DE NESTING', 'Piezas del proyecto (continuación)');
+
   if (result.unplaced.length) {
-    y += 3;
-    doc.setTextColor(180, 0, 0);
-    doc.text(`No caben: ${result.unplaced.join(', ')}`, 15, y, { maxWidth: 180 });
-    doc.setTextColor(0, 0, 0);
+    const lines = doc.splitTextToSize(`No caben en la lámina: ${result.unplaced.join(', ')}`, CW);
+    y = ensure(y, lines.length * 4 + 4, 'REPORTE DE NESTING', 'Advertencias');
+    setText(8.5, 'bold', [180, 0, 0]);
+    doc.text(lines, M, y);
   }
 
-  // Una página por lámina, con plano y lista en el mismo estilo de colores de la interfaz.
-  let pageNo = 0;
+  // ---------- Páginas de láminas ----------
   for (const r of rows) {
     r.sheets.forEach((sh, i) => {
-      if (pageNo > 0) doc.addPage();
-      pageNo++;
       const { W, H } = sh.def;
-      const factor = unitToMm();
-      const scale = Math.min(105 / (W * factor), 205 / (H * factor));
-      const x0 = 15, y0 = 48;
-      const X = (x) => x0 + x * scale * factor;
-      const Y = (yy) => y0 + (H - yy) * scale * factor;
+      const title = defLabel(sh.def);
+      const sub = `Lámina ${i + 1} de ${r.sheets.length} · ${project} · Ensamble: ${assembly}`;
+      newPage(title, sub);
 
-      doc.setFillColor(...blue);
-      doc.rect(0, 0, 210, 27, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.text(`${project} — ${defLabel(sh.def)}`, 15, 12, { maxWidth: 180 });
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.text(`Lámina ${i + 1} de ${r.sheets.length} · Ensamble: ${assembly}`, 15, 19, { maxWidth: 180 });
-      doc.setTextColor(...dark);
-      doc.setFontSize(8);
-      const sheetUse = sh.items.reduce((a, it) => a + it.area, 0) / (W * H) * 100;
-      doc.text(`Uso ${sheetUse.toFixed(1)}% · Merma ${Math.max(0, 100 - sheetUse).toFixed(1)}% · ${W} × ${H} ${unitLabel()}`, 15, 35);
+      const usedA = sh.items.reduce((a, it) => a + it.area, 0);
+      const usePct = (usedA / (W * H)) * 100;
+      setText(8.5, 'normal', dark);
+      const infoLine = `Uso ${usePct.toFixed(1)}%  ·  Merma ${Math.max(0, 100 - usePct).toFixed(1)}%  ·  Piezas ${sh.items.length}  ·  Margen ${sh.def.margin} ${unitLabel()}  ·  Gap ${sh.def.gap} ${unitLabel()}  ·  Rotaciones ${sh.def.angles.join('°, ')}°`;
+      const infoLines = doc.splitTextToSize(infoLine, CW);
+      doc.text(infoLines, M, 35);
 
-      const sheetW = W * scale * factor, sheetH = H * scale * factor;
+      const labelY = 35 + infoLines.length * 4 + 5;
+      const top = labelY + 4;
+      const n = sh.items.length;
+      // Lista en 4 a 6 columnas para que nunca genere hojas extra
+      let listCols = 6;
+      for (const c of [4, 5, 6]) {
+        if (BOTTOM - top - (Math.ceil(n / c) * 6 + 14) - 14 >= 90) { listCols = c; break; }
+      }
+      const listH = Math.ceil(n / listCols) * 6 + 14;
+      const maxH = Math.max(40, BOTTOM - top - listH - 14);
+      const k = Math.min(CW / W, maxH / H); // mm por unidad de trabajo
+      const X = (x) => M + x * k;
+      const Y = (yy) => top + (H - yy) * k;
+
+      setText(9, 'bold', blue);
+      doc.text('PLANO DE CORTE', M, labelY);
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(...blue);
-      doc.setLineWidth(0.7);
-      doc.rect(x0, y0, sheetW, sheetH, 'FD');
+      doc.setLineWidth(0.6);
+      doc.rect(M, top, W * k, H * k, 'FD');
 
-      const drawLoop = (poly, fill, stroke) => {
+      const drawLoop = (poly, fill, stroke, lw) => {
         if (!poly || poly.length < 3) return;
         const deltas = [];
-        let prev = poly[0];
-        for (let k = 1; k < poly.length; k++) {
-          const p = poly[k];
-          deltas.push([p[0] - prev[0], p[1] - prev[1]]);
-          prev = p;
+        for (let q = 1; q < poly.length; q++) {
+          deltas.push([poly[q][0] - poly[q - 1][0], poly[q][1] - poly[q - 1][1]]);
         }
         doc.setFillColor(...fill);
         doc.setDrawColor(...stroke);
-        doc.setLineWidth(0.35);
-        doc.lines(deltas, X(poly[0][0]), Y(poly[0][1]), [scale * factor, -scale * factor], 'FD', true);
+        doc.setLineWidth(lw);
+        doc.lines(deltas, X(poly[0][0]), Y(poly[0][1]), [k, -k], 'FD', true);
       };
 
-      sh.items.forEach((it, index) => {
-        drawLoop(it.poly, [218, 232, 244], blue);
-        (it.holes || []).forEach((hole) => drawLoop(hole, [255, 255, 255], blue));
+      sh.items.forEach((it, idx) => {
+        drawLoop(it.poly, [218, 232, 244], blue, 0.3);
+        (it.holes || []).forEach((hole) => drawLoop(hole, [255, 255, 255], blue, 0.25));
         const [cx, cy] = centroid(it.poly);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.setTextColor(...dark);
-        doc.text(String(index + 1), X(cx), Y(cy), { align: 'center' });
+        const minMM = Math.min(it.bb.maxX - it.bb.minX, it.bb.maxY - it.bb.minY) * k;
+        const fsPt = Math.max(4.5, Math.min(8, minMM * 0.45 * 2.835));
+        setText(fsPt, 'bold', dark);
+        doc.text(String(idx + 1), X(cx), Y(cy) + fsPt * 0.124, { align: 'center' });
       });
 
-      const listX = 128;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      doc.setTextColor(...blue);
-      doc.text('PIEZAS UTILIZADAS', listX, 48);
-      let ty = 57;
-      sh.items.forEach((it, index) => {
-        const lines = doc.splitTextToSize(it.name, 57);
-        const rowH = Math.max(8, lines.length * 4.2 + 3);
-        if (ty + rowH > 282) {
-          doc.addPage();
-          doc.setFillColor(...blue);
-          doc.rect(0, 0, 210, 22, 'F');
-          doc.setTextColor(255, 255, 255);
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(10);
-          doc.text('PIEZAS UTILIZADAS · CONTINUACIÓN', 15, 14);
-          ty = 32;
-        }
-        doc.setFillColor(247, 250, 252);
-        doc.setDrawColor(224, 231, 238);
-        doc.roundedRect(listX, ty - 5, 72, rowH, 1.5, 1.5, 'FD');
+      // Piezas utilizadas en columnas
+      const listY = top + H * k + 10;
+      setText(9.5, 'bold', blue);
+      doc.text('PIEZAS UTILIZADAS', M, listY);
+      const colW = CW / listCols;
+      sh.items.forEach((it, idx) => {
+        const col = idx % listCols;
+        const row = Math.floor(idx / listCols);
+        const x = M + col * colW;
+        const yy = listY + 7 + row * 6;
         doc.setFillColor(...blue);
-        doc.roundedRect(listX + 3, ty - 2.5, 5.5, 5.5, 1, 1, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(7.5);
-        doc.text(String(index + 1), listX + 5.75, ty + 1.2, { align: 'center' });
-        doc.setTextColor(...dark);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8);
-        doc.text(lines, listX + 11, ty + 1, { maxWidth: 58 });
-        ty += rowH + 2;
+        doc.roundedRect(x, yy - 3.6, 5, 4.6, 0.8, 0.8, 'F');
+        setText(7, 'bold', [255, 255, 255]);
+        doc.text(String(idx + 1), x + 2.5, yy - 0.3, { align: 'center' });
+        setText(7.5, 'normal', dark);
+        doc.text(fit(it.name, colW - 9), x + 7, yy);
       });
-      doc.setTextColor(110, 120, 130);
-      doc.setFontSize(7);
-      doc.text(`Generado por Nesting · Unidades: ${unitLabel()} · ${new Date().toLocaleDateString()}`, 15, 290);
     });
   }
-  // Si no hubo láminas, deja un aviso en la primera página
-  if (pageNo === 0) doc.text('Sin láminas calculadas.', 15, 60);
 
-  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  // Pie de página y numeración en todas las hojas
+  const total = doc.getNumberOfPages();
+  for (let pg = 1; pg <= total; pg++) {
+    doc.setPage(pg);
+    setText(7, 'normal', muted);
+    doc.text(`Generado por Nesting · ${stamp}`, M, FOOT_Y);
+    doc.text(`Página ${pg} de ${total}`, PW - M, FOOT_Y, { align: 'right' });
+  }
+
+  const stampFile = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const safeProject = project.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
-  doc.save(`nesting_${safeProject}_${stamp}.pdf`);
+  doc.save(`nesting_${safeProject}_${stampFile}.pdf`);
 }
 
 // ---------- Exportar DXF del nesting ----------
@@ -624,6 +733,16 @@ function clearAll(message) {
   $('status').textContent = message;
   showPanel('filesPanel');
 }
+
+// ---------- Pantalla inicial ----------
+function showScreen(name) {
+  $('homeScreen').hidden = name !== 'home';
+  $('sheetApp').hidden = name !== 'sheets';
+  window.scrollTo(0, 0);
+}
+$('openSheets').addEventListener('click', () => showScreen('sheets'));
+$('goHome').addEventListener('click', () => showScreen('home'));
+showScreen('home');
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');
