@@ -549,7 +549,7 @@ function exportDXF() {
     .replace(/[<>]/g, '').trim();
   const pair = (code, value) => `${code}\r\n${value}\r\n`;
   const fmt = (n) => Number.isFinite(n) ? Number(n).toFixed(6) : '0';
-  const layers = [['SHEETS', 5], ['PARTS', 5], ['HOLES', 1], ['LABELS', 3]];
+  const layers = [['0', 7], ['SHEETS', 5], ['PARTS', 5], ['HOLES', 1], ['LABELS', 3]];
   let dxf = '';
 
   dxf += pair(0, 'SECTION') + pair(2, 'HEADER');
@@ -575,7 +575,13 @@ function exportDXF() {
   dxf += pair(0, 'STYLE') + pair(2, 'STANDARD') + pair(70, 0) + pair(40, 0) + pair(41, 1) + pair(50, 0) + pair(71, 0) + pair(42, 2.5) + pair(3, 'txt') + pair(4, '');
   dxf += pair(0, 'ENDTAB') + pair(0, 'ENDSEC');
 
-  dxf += pair(0, 'SECTION') + pair(2, 'BLOCKS') + pair(0, 'ENDSEC');
+  dxf += pair(0, 'SECTION') + pair(2, 'BLOCKS');
+  for (const blockName of ['*MODEL_SPACE', '*PAPER_SPACE']) {
+    dxf += pair(0, 'BLOCK') + pair(8, '0') + pair(2, blockName) + pair(70, 0);
+    dxf += pair(10, 0) + pair(20, 0) + pair(30, 0) + pair(3, blockName) + pair(1, '');
+    dxf += pair(0, 'ENDBLK') + pair(8, '0');
+  }
+  dxf += pair(0, 'ENDSEC');
   dxf += pair(0, 'SECTION') + pair(2, 'ENTITIES');
 
   const addPolyline = (points, layer, offsetX = 0) => {
