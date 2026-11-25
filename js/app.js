@@ -508,6 +508,84 @@ function exportPDF() {
   doc.save(`nesting_${safeProject}_${stamp}.pdf`);
 }
 
+// ---------- Exportar DXF del nesting ----------
+function exportDXF() {
+  if (!result || !result.sections.length) {
+    alert('Primero calcula el nesting para generar el DXF.');
+    return;
+  }
+
+  const cleanText = (value) => String(value || '').replace(/[\\r\\n\\t]/g, ' ').replace(/[<>]/g, '').trim();
+  const pair = (code, value) => `${code}\\n${value}\\n`;
+  const layers = [
+    ['SHEETS', 5],
+    ['PARTS', 5],
+    ['HOLES', 1],
+    ['LABELS', 3],
+  ];
+  let dxf = '';
+  dxf += pair(0, 'SECTION') + pair(2, 'HEADER');
+  dxf += pair(9, '$ACADVER') + pair(1, 'AC1015');
+  dxf += pair(9, '$INSUNITS') + pair(70, unitMode === 'in' ? 1 : 4);
+  dxf += pair(9, '$MEASUREMENT') + pair(70, unitMode === 'in' ? 0 : 1);
+  dxf += pair(0, 'ENDSEC');
+  dxf += pair(0, 'SECTION') + pair(2, 'TABLES');
+  dxf += pair(0, 'TABLE') + pair(2, 'LAYER') + pair(70, layers.length);
+  for (const [name, color] of layers) {
+    dxf += pair(0, 'LAYER') + pair(2, name) + pair(70, 0) + pair(62, color) + pair(6, 'CONTINUOUS');
+  }
+  dxf += pair(0, 'ENDTAB') + pair(0, 'ENDSEC');
+  dxf += pair(0, 'SECTION') + pair(2, 'ENTITIES');
+
+  const addPolyline = (points, layer, offsetX = 0) => {
+    if (!points || points.length < 3) return;
+    dxf += pair(0, 'LWPOLYLINE') + pair(8, layer) + pair(90, points.length) + pair(70, 1);
+    for (const [x, y] of points) {
+      dxf += pair(10, (x + offsetX).toFixed(6));
+      dxf += pair(20, y.toFixed(6));
+    }
+  };
+  const addText = (x, y, height, value) => {
+    dxf += pair(0, 'TEXT') + pair(8, 'LABELS');
+    dxf += pair(10, x.toFixed(6)) + pair(20, y.toFixed(6)) + pair(30, 0);
+    dxf += pair(40, height.toFixed(6)) + pair(1, cleanText(value)) + pair(50, 0);
+  };
+
+  const project = cleanText($('projectName').value) || 'Proyecto';
+  const sheetGap = Math.max(unitMode === 'in' ? 4 : 100, ...result.sections.map((sh) => sh.def.gap * 10));
+  let offsetX = 0;
+  result.sections.forEach((sh, sheetIndex) => {
+    const { W, H } = sh.def;
+    addPolyline([[0, 0], [W, 0], [W, H], [0, H]], 'SHEETS', offsetX);
+    addText(offsetX, H + (unitMode === 'in' ? 1 : 25), unitMode === 'in' ? 0.18 : 4.5,
+      `LAMINA ${sheetIndex + 1} | ${sh.def.material} | ${sh.def.calibre} | ${W} x ${H} ${unitLabel()}`);
+    sh.items.forEach((it, index) => {
+      addPolyline(it.poly, 'PARTS', offsetX);
+      (it.holes || []).forEach((hole) => addPolyline(hole, 'HOLES', offsetX));
+      const [cx, cy] = centroid(it.poly);
+      const labelHeight = Math.max(Math.min(W, H) * 0.012, unitMode === 'in' ? 0.08 : 2.5);
+      addText(offsetX + cx, cy, labelHeight, `${index + 1} - ${it.name}`);
+    });
+    offsetX += W + sheetGap;
+  });
+  dxf += pair(0, 'ENDSEC') + pair(0, 'EOF');
+
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+  const safeProject = project.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
+  const blob = new Blob([dxf], { type: 'application/dxf;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `nesting_${safeProject}_${unitMode}_${stamp}.dxf`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  $('pdfStatus').textContent = `DXF generado con ${result.sections.length} lámina(s), contornos y recortes interiores. Unidades: ${unitLabel()}.`;
+}
+
+$('exportDxf').addEventListener('click', exportDXF);
+
 // ---------- Finalizar / descartar ----------
 $('finalize').addEventListener('click', () => {
   if (!result) return;
