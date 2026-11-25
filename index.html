@@ -77,7 +77,7 @@
         <label><span>Elaboró</span><input id="preparedBy" type="text" placeholder="Nombre de quien elaboró"></label>
       </div>
     </div>
-    <div class="card"><h2>2. Selecciona los DXF a nestear</h2><input id="dxf" type="file" multiple accept=".dxf"><div id="fileMsg" class="msg" aria-live="polite"></div></div>
+    <div class="card"><h2>2. Selecciona los DXF a nestear</h2><input id="dxf" type="file" multiple><div id="fileMsg" class="msg" aria-live="polite"></div></div>
     <div class="card" id="piecesBox" hidden><h2>2. Cantidad, material y calibre por pieza</h2><div class="tablewrap"><table><thead><tr><th>Pieza</th><th id="areaHeader">Área mm²</th><th>Cantidad</th><th>Material</th><th>Calibre</th><th>Estado</th><th></th></tr></thead><tbody id="pieces"></tbody></table></div></div>
   </section>
   <section class="panel" id="sheetsPanel" hidden><div class="card"><h2>3. Láminas disponibles</h2><p class="small">Agrega un tipo de lámina por cada combinación de material, calibre y medida que tengas. Cada pieza se acomoda solo en las láminas de su mismo material y calibre.</p><div id="defs"></div><button id="addDef" class="secondary">+ Agregar tipo de lámina</button><div style="margin-top:14px"><button id="calc">Calcular nesting</button><div id="status" class="status" aria-live="polite"></div></div></div></section>
