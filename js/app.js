@@ -383,24 +383,4 @@ function showPanel(panelId) {
 }
 document.querySelectorAll('.nav button[data-panel]').forEach((button) => {
   button.addEventListener('click', () => showPanel(button.dataset.panel));
-});      if (index >= 0) {
-        if (!confirm('Ya existe "' + name + '".\n\n¿Deseas reemplazar el DXF existente?\nAceptar = reemplazar · Cancelar = omitir este archivo')) { cancelled++; continue; }
-        previous = files[index];
-    }
-    let entry;
-    try {
-      entry = { name, qty: previous ? previous.qty : 1, material: previous ? previous.material : '', calibre: previous ? previous.calibre : '', geom: parseDXF(await file.text()), error: null };
-    } catch (err) {
-      entry = { name, qty: previous ? previous.qty : 0, material: previous ? previous.material : '', calibre: previous ? previous.calibre : '', geom: null, error: err.message };
-    }
-    if (index >= 0) { files[index] = entry; replaced++; } else { files.push(entry); added++; }
-  }
-  files.sort((x, y) => x.name.localeCompare(y.name, 'es', { numeric: true }));
-  const messages = [];
-  if (added) messages.push(`${added} agregado(s)`);
-  if (replaced) messages.push(`${replaced} reemplazado(s)`);
-  if (cancelled) messages.push(`${cancelled} duplicado(s) omitido(s)`);
-  if (skipped) messages.push(`${skipped} archivo(s) no DXF ignorado(s)`);
-  $('fileMsg').textContent = messages.join(' · ') || 'No se agregaron archivos.';
-  renderPieces();
 });
