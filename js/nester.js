@@ -203,8 +203,23 @@ export async function nestGroup({ pieces, defs, onProgress }) {
       instances.push({ name: pc.name, area: pc.area, outer: pc.outer, holes: pc.holes || [], cache: new Map() });
     }
   }
-  // Piezas grandes primero: normalmente mejora el aprovechamiento.
-  instances.sort((a, b) => b.area - a.area);
+  // Priorizar el tamaño envolvente real, no el orden de carga ni solo el área neta.
+  // Las piezas con huecos grandes pueden tener poca área neta pero ocupar mucho espacio.
+  const sizeKey = (inst) => {
+    const b = bbox(inst.outer);
+    const w = b.maxX - b.minX;
+    const h = b.maxY - b.minY;
+    return { envelope: w * h, longest: Math.max(w, h), shortest: Math.min(w, h), perimeter: inst.outer.reduce((sum, p, i) => {
+      const q = inst.outer[(i + 1) % inst.outer.length];
+      return sum + Math.hypot(q[0] - p[0], q[1] - p[1]);
+    }, 0) };
+  };
+  const sizes = new Map(instances.map((inst) => [inst, sizeKey(inst)]));
+  instances.sort((a, b) => {
+    const A = sizes.get(a), B = sizes.get(b);
+    return B.envelope - A.envelope || B.longest - A.longest ||
+      B.shortest - A.shortest || B.perimeter - A.perimeter || b.area - a.area;
+  });
 
   const sheets = [];
   const unplaced = [];
