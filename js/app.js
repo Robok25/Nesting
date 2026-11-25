@@ -544,10 +544,10 @@ function exportDXF() {
   // DXF ASCII R12 (AC1009): POLYLINE/VERTEX ofrece mayor compatibilidad
   // con AutoCAD y programas CAM que el LWPOLYLINE minimalista anterior.
   const cleanText = (value) => String(value || '')
-    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')
-    .replace(/[\\r\\n\\t]/g, ' ').replace(/[^\\x20-\\x7E]/g, '?')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\r\n\t]/g, ' ').replace(/[^\x20-\x7E]/g, '?')
     .replace(/[<>]/g, '').trim();
-  const pair = (code, value) => `${code}\\r\\n${value}\\r\\n`;
+  const pair = (code, value) => `${code}\r\n${value}\r\n`;
   const fmt = (n) => Number.isFinite(n) ? Number(n).toFixed(6) : '0';
   const layers = [['SHEETS', 5], ['PARTS', 5], ['HOLES', 1], ['LABELS', 3]];
   let dxf = '';
@@ -598,13 +598,8 @@ function exportDXF() {
   const project = cleanText($('projectName').value) || 'Proyecto';
   const sheetGap = Math.max(unitMode === 'in' ? 4 : 100, ...result.sections.map((sh) => sh.def.gap * 10));
   let offsetX = 0;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   result.sections.forEach((sh, sheetIndex) => {
     const { W, H } = sh.def;
-    minX = Math.min(minX, offsetX);
-    minY = Math.min(minY, 0);
-    maxX = Math.max(maxX, offsetX + W);
-    maxY = Math.max(maxY, H + (unitMode === 'in' ? 1 : 25));
     addPolyline([[0, 0], [W, 0], [W, H], [0, H]], 'SHEETS', offsetX);
     addText(offsetX, H + (unitMode === 'in' ? 1 : 25), unitMode === 'in' ? 0.18 : 4.5,
       `LAMINA ${sheetIndex + 1} | ${sh.def.material} | ${sh.def.calibre} | ${W} x ${H} ${unitLabel()}`);
@@ -622,7 +617,7 @@ function exportDXF() {
   dxf += pair(0, 'ENDSEC') + pair(0, 'EOF');
 
   // Comprobaciones mínimas antes de entregar el archivo.
-  if (!dxf.startsWith('0\\r\\nSECTION\\r\\n') || !dxf.trimEnd().endsWith('0\\r\\nEOF')) {
+  if (!dxf.startsWith('0\r\nSECTION\r\n') || !dxf.trimEnd().endsWith('0\r\nEOF')) {
     throw new Error('No se pudo validar la estructura del DXF generado.');
   }
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
