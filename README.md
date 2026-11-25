@@ -26,7 +26,7 @@ Limitaciones de la versión 1:
 ## Privacidad
 
 - Los DXF se leen en tu navegador y no se suben a ningún servidor.
-- No se usa `localStorage` ni `IndexedDB`. Al finalizar o descartar, la app borra los datos de memoria y limpia el selector de archivos.
+- No se usa `localStorage` ni `IndexedDB`. Los datos permanecen en memoria mientras la app está abierta; al cerrar la app o elegir **Crear nuevo cálculo**, se eliminan.
 - El service worker solo guarda en caché los archivos de la app, nunca tus piezas ni tus cálculos.
 - El PDF se descarga a la carpeta de descargas de tu equipo; esa copia la administras tú.
 
