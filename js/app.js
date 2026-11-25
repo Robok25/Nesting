@@ -296,7 +296,7 @@ function sheetSVG(sh) {
       add('path', { d: hd, fill: '#fff', stroke: '#1f4e79', 'stroke-width': 1.4, 'vector-effect': 'non-scaling-stroke' });
     }
     const [cx, cy] = centroid(it.poly);
-    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 28, 13), class: 'label' });
+    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 16, 24), class: 'label' });
     t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
   }
   return svg;
