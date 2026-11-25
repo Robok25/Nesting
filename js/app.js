@@ -16,8 +16,8 @@ const MATERIAL_OPTIONS = [
 ];
 const CALIBRE_OPTIONS = [
   'Calibre 10', 'Calibre 11', 'Calibre 12', 'Calibre 14', 'Calibre 16',
-  'Calibre 18', 'Calibre 20', 'Calibre 22', 'Calibre 24',
-  'Placa 1/8 in', 'Placa 3/16 in', 'Placa 1/4 in',
+  'Calibre 18', 'Calibre 20', 'Calibre 22', 'Calibre 24', 'Calibre 26', 'Calibre 28', 'Calibre 30',
+  'Placa 1/8 in', 'Placa 3/16 in', 'Placa 1/4 in', 'Placa 3/8 in', 'Placa 1/2 in',
 ];
 
 // Estado solo en memoria. No se usa localStorage ni IndexedDB.
