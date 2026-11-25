@@ -25,6 +25,8 @@ let files = [];   // { name, qty, material, calibre, geom, error }
 let defs = [];    // { id, material, calibre, W, H, margin, gap, angles }
 let result = null;
 let nextId = 1;
+let labelScale = 1;   // 0.5 a 1.5, relativo al tamaño de cada pieza
+let showLabels = true;
 let unitMode = 'mm'; // La unidad es única para todos los DXF y láminas de esta sesión.
 
 const unitLabel = () => unitMode === 'in' ? 'in' : 'mm';
@@ -278,6 +280,16 @@ function renderResult() {
   $('pdfStatus').textContent = '';
   const out = $('results');
   out.replaceChildren();
+  const ctl = el('div', { className: 'label-controls' });
+  const range = el('input', { type: 'range', min: 0.5, max: 1.5, step: 0.1, value: labelScale });
+  range.addEventListener('change', () => { labelScale = parseFloat(range.value); renderResult(); });
+  const chk = el('input', { type: 'checkbox', checked: showLabels });
+  chk.addEventListener('change', () => { showLabels = chk.checked; renderResult(); });
+  ctl.append(
+    el('label', {}, [el('span', { textContent: 'Tamaño de números (se ajusta a cada pieza)' }), range]),
+    el('label', { className: 'inline' }, [chk, el('span', { textContent: 'Mostrar números' })])
+  );
+  out.append(ctl);
   const rows = summaryRows();
   const totalSheets = rows.reduce((a, r) => a + r.sheets.length, 0);
 
@@ -343,11 +355,18 @@ function sheetSVG(sh) {
     add('path', { d, class: 'piece' });
     for (const hole of (it.holes || [])) {
       const hd = hole.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)} ${(H - y).toFixed(2)}`).join(' ') + ' Z';
-      add('path', { d: hd, fill: '#fff', stroke: '#1f4e79', 'stroke-width': 1.4, 'vector-effect': 'non-scaling-stroke' });
+      add('path', { d: hd, fill: '#fff', stroke: '#0066b3', 'stroke-width': 1.4, 'vector-effect': 'non-scaling-stroke' });
     }
-    const [cx, cy] = centroid(it.poly);
-    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 16, unitMode === 'in' ? 0.9 : 24), class: 'label' });
-    t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
+    if (showLabels && labelScale > 0) {
+      const [cx, cy] = centroid(it.poly);
+      const minDim = Math.min(it.bb.maxX - it.bb.minX, it.bb.maxY - it.bb.minY);
+      const base = Math.min(W, H);
+      const fs = Math.max(base * 0.008, Math.min(minDim * 0.42, base / 14)) * labelScale;
+      if (fs >= base * 0.004) {
+        const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': fs.toFixed(2), class: 'label' });
+        t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
+      }
+    }
   }
   return svg;
 }
@@ -366,8 +385,8 @@ function exportPDF() {
   const usedFiles = files.filter((f) => f.geom && f.qty > 0);
   const totalPieces = usedFiles.reduce((a, f) => a + f.qty, 0);
 
-  const blue = [31, 78, 121], dark = [34, 45, 58], muted = [98, 110, 122];
-  const light = [239, 244, 248], rule = [214, 223, 232];
+  const blue = [0, 102, 179], dark = [11, 31, 51], muted = [98, 110, 122];
+  const light = [234, 244, 252], rule = [214, 223, 232];
   const PW = 210, M = 14, CW = PW - 2 * M, BOTTOM = 276, FOOT_Y = 289;
 
   const setText = (size, style, color) => {
@@ -523,14 +542,21 @@ function exportPDF() {
       doc.text(infoLines, M, 35);
 
       const labelY = 35 + infoLines.length * 4 + 5;
-      setText(9, 'bold', blue);
-      doc.text('PLANO DE CORTE', M, labelY);
       const top = labelY + 4;
-      const maxW = 116, maxH = BOTTOM - top - 4;
-      const k = Math.min(maxW / W, maxH / H); // mm por unidad de trabajo
+      const n = sh.items.length;
+      // Lista en 4 a 6 columnas para que nunca genere hojas extra
+      let listCols = 6;
+      for (const c of [4, 5, 6]) {
+        if (BOTTOM - top - (Math.ceil(n / c) * 6 + 14) - 14 >= 90) { listCols = c; break; }
+      }
+      const listH = Math.ceil(n / listCols) * 6 + 14;
+      const maxH = Math.max(40, BOTTOM - top - listH - 14);
+      const k = Math.min(CW / W, maxH / H); // mm por unidad de trabajo
       const X = (x) => M + x * k;
       const Y = (yy) => top + (H - yy) * k;
 
+      setText(9, 'bold', blue);
+      doc.text('PLANO DE CORTE', M, labelY);
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(...blue);
       doc.setLineWidth(0.6);
@@ -552,36 +578,28 @@ function exportPDF() {
         drawLoop(it.poly, [218, 232, 244], blue, 0.3);
         (it.holes || []).forEach((hole) => drawLoop(hole, [255, 255, 255], blue, 0.25));
         const [cx, cy] = centroid(it.poly);
-        setText(7.5, 'bold', dark);
-        doc.text(String(idx + 1), X(cx), Y(cy) + 1.2, { align: 'center' });
+        const minMM = Math.min(it.bb.maxX - it.bb.minX, it.bb.maxY - it.bb.minY) * k;
+        const fsPt = Math.max(4.5, Math.min(8, minMM * 0.45 * 2.835));
+        setText(fsPt, 'bold', dark);
+        doc.text(String(idx + 1), X(cx), Y(cy) + fsPt * 0.124, { align: 'center' });
       });
 
-      // Lista de piezas utilizadas, en la columna derecha
-      const listX = M + 122;
-      const listW = PW - M - listX;
+      // Piezas utilizadas en columnas
+      const listY = top + H * k + 10;
       setText(9.5, 'bold', blue);
-      doc.text('PIEZAS UTILIZADAS', listX, labelY);
-      let ly = labelY + 6;
+      doc.text('PIEZAS UTILIZADAS', M, listY);
+      const colW = CW / listCols;
       sh.items.forEach((it, idx) => {
-        setText(8, 'normal', dark);
-        const lines = doc.splitTextToSize(it.name, listW - 12);
-        const rowH = Math.max(8, lines.length * 3.8 + 4);
-        if (ly + rowH > BOTTOM) {
-          newPage(title, `${sub} (continuación)`);
-          setText(9.5, 'bold', blue);
-          doc.text('PIEZAS UTILIZADAS (continuación)', listX, 36);
-          ly = 42;
-        }
-        doc.setFillColor(247, 250, 252);
-        doc.setDrawColor(...rule);
-        doc.roundedRect(listX, ly, listW, rowH, 1.5, 1.5, 'FD');
+        const col = idx % listCols;
+        const row = Math.floor(idx / listCols);
+        const x = M + col * colW;
+        const yy = listY + 7 + row * 6;
         doc.setFillColor(...blue);
-        doc.roundedRect(listX + 2.5, ly + (rowH - 5.5) / 2, 6, 5.5, 1, 1, 'F');
-        setText(7.5, 'bold', [255, 255, 255]);
-        doc.text(String(idx + 1), listX + 5.5, ly + rowH / 2 + 1.2, { align: 'center' });
-        setText(8, 'normal', dark);
-        doc.text(lines, listX + 11, ly + 4.5);
-        ly += rowH + 2.5;
+        doc.roundedRect(x, yy - 3.6, 5, 4.6, 0.8, 0.8, 'F');
+        setText(7, 'bold', [255, 255, 255]);
+        doc.text(String(idx + 1), x + 2.5, yy - 0.3, { align: 'center' });
+        setText(7.5, 'normal', dark);
+        doc.text(fit(it.name, colW - 9), x + 7, yy);
       });
     });
   }
@@ -715,6 +733,16 @@ function clearAll(message) {
   $('status').textContent = message;
   showPanel('filesPanel');
 }
+
+// ---------- Pantalla inicial ----------
+function showScreen(name) {
+  $('homeScreen').hidden = name !== 'home';
+  $('sheetApp').hidden = name !== 'sheets';
+  window.scrollTo(0, 0);
+}
+$('openSheets').addEventListener('click', () => showScreen('sheets'));
+$('goHome').addEventListener('click', () => showScreen('home'));
+showScreen('home');
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js');
