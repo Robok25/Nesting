@@ -99,8 +99,10 @@ export function parseDXF(text) {
     else throw new Error('El archivo tiene más de una pieza; sepáralas en archivos distintos');
   }
 
-  const material = area(outer) - holes.reduce((s, h) => s + area(h), 0);
-  return { outer, holes, area: material };
+  const outerS = simplifyLoop(outer);
+  const holesS = holes.map(simplifyLoop);
+  const material = area(outerS) - holesS.reduce((s, h) => s + area(h), 0);
+  return { outer: outerS, holes: holesS, area: material };
 }
 
 function toPath({ type, data: d }) {
@@ -143,34 +145,89 @@ function clean(pts) {
   return pts.length > 1 && near(pts[0], pts[pts.length - 1]) ? pts.slice(0, -1) : pts;
 }
 
-// Une líneas y arcos abiertos formando contornos cerrados.
+// Une líneas y arcos abiertos formando contornos cerrados. Tiempo casi lineal.
 function chain(paths) {
-  const loops = [];
-  const rest = paths.slice();
-  while (rest.length) {
-    let cur = rest.pop();
-    let grew = true;
-    while (grew && !near(cur[0], cur[cur.length - 1])) {
-      grew = false;
-      for (let j = 0; j < rest.length && !grew; j++) {
-        const q = rest[j];
-        const f = cur[0];
-        const l = cur[cur.length - 1];
-        const qs = q[0];
-        const qe = q[q.length - 1];
-        let next = null;
-        if (near(l, qs)) next = cur.concat(q.slice(1));
-        else if (near(l, qe)) next = cur.concat(q.slice(0, -1).reverse());
-        else if (near(f, qe)) next = q.concat(cur.slice(1));
-        else if (near(f, qs)) next = q.slice().reverse().concat(cur.slice(1));
-        if (next) {
-          cur = next;
-          rest.splice(j, 1);
-          grew = true;
-        }
+  const key = (p) => `${Math.round(p[0] * 100)},${Math.round(p[1] * 100)}`;
+  const idx = new Map();
+  paths.forEach((p, i) => {
+    for (const e of [p[0], p[p.length - 1]]) {
+      const k = key(e);
+      if (!idx.has(k)) idx.set(k, []);
+      idx.get(k).push(i);
+    }
+  });
+  const used = new Array(paths.length).fill(false);
+  const takeFrom = (pt) => {
+    const list = idx.get(key(pt)) || [];
+    while (list.length) {
+      const j = list.pop();
+      if (!used[j]) return j;
+    }
+    return -1;
+  };
+  const extendTail = (cur) => {
+    for (;;) {
+      if (cur.length > 3 && near(cur[cur.length - 1], cur[0])) return;
+      const j = takeFrom(cur[cur.length - 1]);
+      if (j < 0) return;
+      used[j] = true;
+      const q = paths[j];
+      if (near(q[0], cur[cur.length - 1])) {
+        for (let k = 1; k < q.length; k++) cur.push(q[k]);
+      } else {
+        for (let k = q.length - 2; k >= 0; k--) cur.push(q[k]);
       }
     }
-    if (near(cur[0], cur[cur.length - 1]) && cur.length >= 4) loops.push(clean(cur));
+  };
+  const loops = [];
+  for (let i = 0; i < paths.length; i++) {
+    if (used[i]) continue;
+    used[i] = true;
+    const cur = paths[i].slice();
+    extendTail(cur);
+    cur.reverse();
+    extendTail(cur);
+    cur.reverse();
+    if (cur.length >= 4 && near(cur[0], cur[cur.length - 1])) loops.push(clean(cur));
   }
   return loops;
+}
+
+// Simplificación (Ramer-Douglas-Peucker) para que el acomodo sea rápido sin perder forma.
+function segD(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1];
+  const L = dx * dx + dy * dy;
+  let t = L ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
+}
+function rdp(p, tol) {
+  if (p.length < 3) return p;
+  const a = p[0], b = p[p.length - 1];
+  let maxD = -1, idx = 0;
+  for (let i = 1; i < p.length - 1; i++) {
+    const d = segD(p[i], a, b);
+    if (d > maxD) { maxD = d; idx = i; }
+  }
+  if (maxD > tol) {
+    const l = rdp(p.slice(0, idx + 1), tol);
+    const r = rdp(p.slice(idx), tol);
+    return l.slice(0, -1).concat(r);
+  }
+  return [a, b];
+}
+function simplifyLoop(pts) {
+  if (pts.length < 12) return pts;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of pts) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+  const tol = 2e-5 * Math.hypot(maxX - minX, maxY - minY);
+  let far = 1, best = -1;
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - pts[0][0], pts[i][1] - pts[0][1]);
+    if (d > best) { best = d; far = i; }
+  }
+  const a = rdp(pts.slice(0, far + 1), tol);
+  const b = rdp(pts.slice(far).concat([pts[0]]), tol);
+  const out = a.slice(0, -1).concat(b.slice(0, -1));
+  return out.length >= 3 ? out : pts;
 }

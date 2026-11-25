@@ -94,6 +94,8 @@ $('dxf').addEventListener('change', async (e) => {
       if (!answer) { cancelled++; continue; }
       previous = files[index];
     }
+    $('fileMsg').textContent = `Leyendo ${name}…`;
+    await new Promise((r) => setTimeout(r, 0));
     let entry;
     try {
       entry = { name, qty: previous ? previous.qty : 1, material: previous ? previous.material : '', calibre: previous ? previous.calibre : '', geom: parseDXF(await file.text()), error: null };
