@@ -50,6 +50,8 @@ function el(tag, props = {}, children = []) {
 
 let bulkMaterialValue = '';
 let bulkCalibreValue = '';
+let bulkMaterialSelect = null;
+let bulkCalibreSelect = null;
 
 function applyBulkValue(kind, value) {
   if (!value) {
@@ -62,17 +64,17 @@ function applyBulkValue(kind, value) {
 }
 
 function setupBulkAssignment() {
-  const materialSelect = dropdown('', MATERIAL_OPTIONS, (value) => { bulkMaterialValue = value; }, 'Seleccionar material...');
-  const calibreSelect = dropdown('', CALIBRE_OPTIONS, (value) => { bulkCalibreValue = value; }, 'Seleccionar calibre...');
+  bulkMaterialSelect = dropdown('', MATERIAL_OPTIONS, (value) => { bulkMaterialValue = value; }, 'Seleccionar material...');
+  bulkCalibreSelect = dropdown('', CALIBRE_OPTIONS, (value) => { bulkCalibreValue = value; }, 'Seleccionar calibre...');
   const materialButton = el('button', { type: 'button', className: 'secondary', textContent: 'Aplicar a todas', onclick: () => applyBulkValue('material', bulkMaterialValue) });
   const calibreButton = el('button', { type: 'button', className: 'secondary', textContent: 'Aplicar a todas', onclick: () => applyBulkValue('calibre', bulkCalibreValue) });
   $('bulkAssignment').replaceChildren(
     el('div', { className: 'bulk-control' }, [
-      el('label', {}, [el('span', { textContent: 'Material para todas las piezas' }), materialSelect]),
+      el('label', {}, [el('span', { textContent: 'Material para todas las piezas' }), bulkMaterialSelect]),
       materialButton,
     ]),
     el('div', { className: 'bulk-control' }, [
-      el('label', {}, [el('span', { textContent: 'Calibre para todas las piezas' }), calibreSelect]),
+      el('label', {}, [el('span', { textContent: 'Calibre para todas las piezas' }), bulkCalibreSelect]),
       calibreButton,
     ])
   );
@@ -540,8 +542,11 @@ function exportPDF() {
         drawLoop(it.poly, [218, 232, 244], blue);
         (it.holes || []).forEach((hole) => drawLoop(hole, [255, 255, 255], blue));
         const [cx, cy] = centroid(it.poly);
+        const xs = it.poly.map((p) => p[0]), ys = it.poly.map((p) => p[1]);
+        const minSide = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+        const labelPt = Math.max(2.5, Math.min(6, minSide * scale * factor * 2.8346 * 0.18));
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
+        doc.setFontSize(labelPt);
         doc.setTextColor(...dark);
         doc.text(String(index + 1), X(cx), Y(cy), { align: 'center' });
       });
@@ -684,7 +689,7 @@ function exportDXF() {
       const [cx, cy] = centroid(it.poly);
       const xs = it.poly.map((p) => p[0]), ys = it.poly.map((p) => p[1]);
       const pieceSize = Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
-      const labelHeight = Math.max(unitMode === 'in' ? 0.035 : 0.9, Math.min(pieceSize * 0.12, Math.min(W, H) * 0.01));
+      const labelHeight = Math.max(unitMode === 'in' ? 0.025 : 0.55, Math.min(pieceSize * 0.07, Math.min(W, H) * 0.006));
       addText(offsetX + cx, cy, labelHeight, `${index + 1} - ${it.name}`);
     });
     offsetX += W + sheetGap;
@@ -732,6 +737,10 @@ function clearAll(message) {
   files = [];
   defs = [];
   result = null;
+  bulkMaterialValue = '';
+  bulkCalibreValue = '';
+  if (bulkMaterialSelect) bulkMaterialSelect.value = '';
+  if (bulkCalibreSelect) bulkCalibreSelect.value = '';
   $('dxf').value = '';
   $('projectName').value = '';
   $('assemblyName').value = '';
