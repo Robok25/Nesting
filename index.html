@@ -40,6 +40,9 @@
     .nav button { flex:1; min-width:125px; margin:0; }
     .nav button.active { background:#163954; outline:2px solid #8bb4d4; }
     .panel[hidden] { display:none; }
+    .bulk { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; background:#f7fafc; border:1px solid #dce5ed; border-radius:8px; padding:10px; margin-bottom:12px; }
+    .bulk label { flex:1 1 200px; }
+    .bulk button { margin:0; }
     .result-sheet { display:grid; grid-template-columns:minmax(180px, 1.1fr) minmax(180px, .9fr); gap:14px; align-items:stretch; border:1px solid #e0e5e9; border-radius:10px; padding:12px; margin:10px 0 16px; background:#fbfcfd; }
     .sheet-preview { max-width:430px; width:100%; min-height:310px; justify-self:center; display:flex; align-items:stretch; }
     svg.sheet { display:block; width:100%; height:100%; min-height:310px; max-height:none; border:1px solid #ddd; background:#fff; }
@@ -78,7 +81,7 @@
       </div>
     </div>
     <div class="card"><h2>2. Selecciona los DXF a nestear</h2><input id="dxf" type="file" multiple><div id="fileMsg" class="msg" aria-live="polite"></div></div>
-    <div class="card" id="piecesBox" hidden><h2>2. Cantidad, material y calibre por pieza</h2><div class="tablewrap"><table><thead><tr><th>Pieza</th><th id="areaHeader">Área mm²</th><th>Cantidad</th><th>Material</th><th>Calibre</th><th>Estado</th><th></th></tr></thead><tbody id="pieces"></tbody></table></div></div>
+    <div class="card" id="piecesBox" hidden><h2>2. Cantidad, material y calibre por pieza</h2><div class="bulk"><label><span>Mismo material para todas</span><select id="bulkMaterial"></select></label><button type="button" id="bulkMaterialBtn" class="secondary">Aplicar material a todas</button><label><span>Mismo calibre para todas</span><select id="bulkCalibre"></select></label><button type="button" id="bulkCalibreBtn" class="secondary">Aplicar calibre a todas</button></div><div class="tablewrap"><table><thead><tr><th>Pieza</th><th id="areaHeader">Área mm²</th><th>Cantidad</th><th>Material</th><th>Calibre</th><th>Estado</th><th></th></tr></thead><tbody id="pieces"></tbody></table></div></div>
   </section>
   <section class="panel" id="sheetsPanel" hidden><div class="card"><h2>3. Láminas disponibles</h2><p class="small">Agrega un tipo de lámina por cada combinación de material, calibre y medida que tengas. Cada pieza se acomoda solo en las láminas de su mismo material y calibre.</p><div id="defs"></div><button id="addDef" class="secondary">+ Agregar tipo de lámina</button><div style="margin-top:14px"><button id="calc">Calcular nesting</button><div id="status" class="status" aria-live="polite"></div></div></div></section>
   <section class="panel" id="resultPanel" hidden><div class="card"><h2>Resultados</h2><div class="result-actions"><button id="finalize" disabled>Guardar PDF</button><button id="exportDxf" disabled>Guardar DXF del nesting</button><button id="discard" class="danger">Crear nuevo cálculo</button></div><p class="pdf-note">Guardar el PDF no borra tu cálculo. Puedes regresar a archivos o láminas, hacer ajustes y volver a generar el documento.</p><div id="pdfStatus" class="status" aria-live="polite"></div><div id="summary"></div><div id="results"></div></div></section>
