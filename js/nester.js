@@ -1,6 +1,6 @@
 // Motor de nesting: heurística bottom-left sobre candidatos que "tocan" piezas ya colocadas.
 // Se ejecuta por grupo (material + calibre). Cada grupo usa las láminas definidas para ese grupo.
-// Las piezas se tratan por su contorno exterior; los agujeros no bloquean el acomodo.
+// Los barrenos y recortes interiores son huecos utilizables: se consideran para colisiones y posiciones candidatas.
 
 export function bbox(p) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -81,10 +81,48 @@ export function polyDistance(A, B) {
   return d;
 }
 
+function pointInMaterial(pt, shape) {
+  return inside(pt, shape.outer) && !(shape.holes || []).some((h) => inside(pt, h));
+}
+
+function boundaryLoops(shape) {
+  return [shape.outer, ...(shape.holes || [])];
+}
+
+function shapesOverlap(A, B) {
+  const aLoops = boundaryLoops(A), bLoops = boundaryLoops(B);
+  for (const a of aLoops) for (const b of bLoops) {
+    for (let i = 0; i < a.length; i++) {
+      for (let j = 0; j < b.length; j++) {
+        if (segInter(a[i], a[(i + 1) % a.length], b[j], b[(j + 1) % b.length])) return true;
+      }
+    }
+  }
+  if (A.outer.some((p) => pointInMaterial(p, B))) return true;
+  if (B.outer.some((p) => pointInMaterial(p, A))) return true;
+  return false;
+}
+
+function boundaryDistance(A, B) {
+  let d = Infinity;
+  for (const a of boundaryLoops(A)) for (const b of boundaryLoops(B)) {
+    for (let i = 0; i < a.length; i++) {
+      const a1 = a[i], a2 = a[(i + 1) % a.length];
+      for (let j = 0; j < b.length; j++) {
+        const b1 = b[j], b2 = b[(j + 1) % b.length];
+        d = Math.min(d, segDist(a1, b1, b2), segDist(a2, b1, b2), segDist(b1, a1, a2), segDist(b2, a1, a2));
+        if (d === 0) return 0;
+      }
+    }
+  }
+  return d;
+}
+
 function collides(cand, bb, items, g) {
   for (const it of items) {
     if (rectGap(bb, it.bb) >= g) continue;
-    if (polyDistance(cand, it.poly) < g) return true;
+    const existing = { outer: it.poly, holes: it.holes || [] };
+    if (shapesOverlap(cand, existing) || boundaryDistance(cand, existing) < g) return true;
   }
   return false;
 }
@@ -96,8 +134,13 @@ function variantsFor(inst, def) {
     inst.cache.set(
       key,
       def.angles.map((a) => {
-        const poly = normalize(rotate(inst.outer, a));
-        return { angle: a, poly, bb: bbox(poly) };
+        const rotatedOuter = rotate(inst.outer, a);
+        const bounds = bbox(rotatedOuter);
+        const poly = rotatedOuter.map(([x, y]) => [x - bounds.minX, y - bounds.minY]);
+        const holes = (inst.holes || []).map((h) =>
+          rotate(h, a).map(([x, y]) => [x - bounds.minX, y - bounds.minY])
+        );
+        return { angle: a, poly, holes, bb: bbox(poly) };
       })
     );
   }
@@ -110,6 +153,11 @@ function firstFreePosition(sh, v) {
   for (const it of sh.items) {
     xs.push(it.bb.maxX + g);
     ys.push(it.bb.maxY + g);
+    for (const hole of (it.holes || [])) {
+      const hb = bbox(hole);
+      xs.push(hb.minX + g);
+      ys.push(hb.minY + g);
+    }
   }
   const X = [...new Set(xs)].sort((a, b) => a - b);
   const Y = [...new Set(ys)].sort((a, b) => a - b);
@@ -117,7 +165,8 @@ function firstFreePosition(sh, v) {
     for (const x of X) {
       if (x + v.bb.maxX > W - margin || y + v.bb.maxY > H - margin) continue;
       const bb = { minX: x, minY: y, maxX: x + v.bb.maxX, maxY: y + v.bb.maxY };
-      if (collides(translate(v.poly, x, y), bb, sh.items, g)) continue;
+      const candidate = { outer: translate(v.poly, x, y), holes: v.holes.map((h) => translate(h, x, y)) };
+      if (collides(candidate, bb, sh.items, g)) continue;
       return { x, y };
     }
   }
@@ -140,6 +189,7 @@ function bestPlacement(sh, inst) {
     area: inst.area,
     angle: v.angle,
     poly: translate(v.poly, x, y),
+    holes: v.holes.map((h) => translate(h, x, y)),
     bb: { minX: x, minY: y, maxX: x + v.bb.maxX, maxY: y + v.bb.maxY },
   };
 }
@@ -150,7 +200,7 @@ export async function nestGroup({ pieces, defs, onProgress }) {
   const instances = [];
   for (const pc of pieces) {
     for (let k = 0; k < pc.qty; k++) {
-      instances.push({ name: pc.name, area: pc.area, outer: pc.outer, cache: new Map() });
+      instances.push({ name: pc.name, area: pc.area, outer: pc.outer, holes: pc.holes || [], cache: new Map() });
     }
   }
   // Piezas grandes primero: normalmente mejora el aprovechamiento.

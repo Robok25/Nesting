@@ -7,6 +7,18 @@ const ANGLE_OPTIONS = [
   { value: '0,90', label: '0° y 90°' },
   { value: '0,45,90', label: '0°, 45° y 90°' },
 ];
+const MATERIAL_OPTIONS = [
+  'Acero al carbón',
+  'Acero galvanizado',
+  'Acero inoxidable 304',
+  'Acero inoxidable 316',
+  'Aluminio',
+];
+const CALIBRE_OPTIONS = [
+  'Calibre 10', 'Calibre 11', 'Calibre 12', 'Calibre 14', 'Calibre 16',
+  'Calibre 18', 'Calibre 20', 'Calibre 22', 'Calibre 24', 'Calibre 26', 'Calibre 28', 'Calibre 30',
+  'Placa 1/8 in', 'Placa 3/16 in', 'Placa 1/4 in', 'Placa 3/8 in', 'Placa 1/2 in',
+];
 
 // Estado solo en memoria. No se usa localStorage ni IndexedDB.
 let files = [];   // { name, qty, material, calibre, geom, error }
@@ -28,6 +40,31 @@ function el(tag, props = {}, children = []) {
 function input(type, value, onInput, extra = {}) {
   const n = el('input', { type, value, ...extra });
   n.addEventListener('input', () => onInput(type === 'number' ? parseFloat(n.value) : n.value));
+  return n;
+}
+
+function dropdown(value, options, onChange, placeholder = 'Seleccionar...', disabled = false) {
+  const n = el('select', { disabled });
+  n.append(el('option', { value: '', textContent: placeholder }));
+  options.forEach((option) => n.append(el('option', { value: option, textContent: option })));
+  if (value && !options.includes(value)) {
+    n.append(el('option', { value, textContent: `Personalizado: ${value}` }));
+  }
+  n.append(el('option', { value: '__OTHER__', textContent: 'Otro (escribir...)' }));
+  n.value = value || '';
+  n.addEventListener('change', () => {
+    if (n.value === '__OTHER__') {
+      const custom = prompt('Escribe el valor personalizado:');
+      if (custom && custom.trim()) {
+        const v = custom.trim();
+        if (![...n.options].some((o) => o.value === v)) n.insertBefore(el('option', { value: v, textContent: `Personalizado: ${v}` }), n.lastElementChild);
+        n.value = v;
+        onChange(v);
+      } else n.value = value || '';
+      return;
+    }
+    onChange(n.value);
+  });
   return n;
 }
 
@@ -75,8 +112,8 @@ function renderPieces() {
         el('td', { textContent: f.name }),
         el('td', { textContent: f.geom ? Math.round(f.geom.area).toLocaleString() : '—' }),
         el('td', {}, [input('number', f.qty, (v) => (f.qty = Math.max(0, parseInt(v, 10) || 0)), { min: 0, step: 1, disabled })]),
-        el('td', {}, [input('text', f.material, (v) => (f.material = v), { placeholder: 'Ej. Acero', disabled })]),
-        el('td', {}, [input('text', f.calibre, (v) => (f.calibre = v), { placeholder: 'Ej. CAL 16', disabled })]),
+        el('td', {}, [dropdown(f.material, MATERIAL_OPTIONS, (v) => (f.material = v), 'Material...', disabled)]),
+        el('td', {}, [dropdown(f.calibre, CALIBRE_OPTIONS, (v) => (f.calibre = v), 'Calibre...', disabled)]),
         el('td', { textContent: f.error ? 'Error: ' + f.error : 'OK', className: f.error ? 'err' : 'ok' }),
         el('td', {}, [el('button', { type: 'button', className: 'danger small', textContent: 'Quitar', onclick: () => {
           if (confirm(`¿Quitar el archivo "${f.name}" de la lista?`)) { files = files.filter((item) => item !== f); renderPieces(); }
@@ -103,8 +140,8 @@ function renderDefs() {
       el('div', { className: 'defcard' }, [
         el('div', { className: 'defhead', textContent: `Lámina tipo ${i + 1}` }),
         el('div', { className: 'grid' }, [
-          el('label', {}, [el('span', { textContent: 'Material' }), input('text', d.material, (v) => (d.material = v), { placeholder: 'Ej. Acero' })]),
-          el('label', {}, [el('span', { textContent: 'Calibre' }), input('text', d.calibre, (v) => (d.calibre = v), { placeholder: 'Ej. CAL 16' })]),
+          el('label', {}, [el('span', { textContent: 'Material' }), dropdown(d.material, MATERIAL_OPTIONS, (v) => (d.material = v), 'Material...')]),
+          el('label', {}, [el('span', { textContent: 'Calibre' }), dropdown(d.calibre, CALIBRE_OPTIONS, (v) => (d.calibre = v), 'Calibre...')]),
           el('label', {}, [el('span', { textContent: 'Ancho (mm)' }), input('number', d.W, (v) => (d.W = v), { min: 1 })]),
           el('label', {}, [el('span', { textContent: 'Alto (mm)' }), input('number', d.H, (v) => (d.H = v), { min: 1 })]),
           el('label', {}, [el('span', { textContent: 'Margen (mm)' }), input('number', d.margin, (v) => (d.margin = v), { min: 0 })]),
@@ -151,7 +188,7 @@ $('calc').addEventListener('click', async () => {
     if (!f.geom || f.qty <= 0) continue;
     const k = keyOf(f.material, f.calibre);
     if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push({ name: f.name, outer: f.geom.outer, area: f.geom.area, qty: f.qty });
+    groups.get(k).push({ name: f.name, outer: f.geom.outer, holes: f.geom.holes || [], area: f.geom.area, qty: f.qty });
   }
 
   $('calc').disabled = true;
@@ -189,6 +226,7 @@ function summaryRows() {
 }
 
 function renderResult() {
+  $('pdfStatus').textContent = '';
   const out = $('results');
   out.replaceChildren();
   const rows = summaryRows();
@@ -253,8 +291,12 @@ function sheetSVG(sh) {
       .map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)} ${(H - y).toFixed(2)}`)
       .join(' ') + ' Z';
     add('path', { d, class: 'piece' });
+    for (const hole of (it.holes || [])) {
+      const hd = hole.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)} ${(H - y).toFixed(2)}`).join(' ') + ' Z';
+      add('path', { d: hd, fill: '#fff', stroke: '#1f4e79', 'stroke-width': 1.4, 'vector-effect': 'non-scaling-stroke' });
+    }
     const [cx, cy] = centroid(it.poly);
-    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 55, 5), class: 'label' });
+    const t = add('text', { x: cx.toFixed(2), y: (H - cy).toFixed(2), 'font-size': Math.max(Math.min(W, H) / 16, 24), class: 'label' });
     t.textContent = String(it.displayNumber || sh.items.indexOf(it) + 1);
   }
   return svg;
@@ -267,19 +309,65 @@ function exportPDF() {
   const rows = summaryRows();
   const totalSheets = rows.reduce((a, r) => a + r.sheets.length, 0);
 
-  doc.setFontSize(14);
-  doc.text('Cálculo de nesting', 15, 15);
+  const project = $('projectName')?.value.trim() || 'Proyecto sin nombre';
+  const assembly = $('assemblyName')?.value.trim() || 'No especificado';
+  const prepared = $('preparedBy')?.value.trim() || 'No especificado';
+  const blue = [31, 78, 121];
+  const dark = [31, 45, 58];
+  const light = [239, 244, 248];
+  doc.setFillColor(...blue);
+  doc.rect(0, 0, 210, 34, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(19);
+  doc.text('REPORTE DE NESTING', 15, 16);
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text(`Fecha: ${new Date().toLocaleString()}`, 15, 22);
-  doc.text(`Láminas necesarias en total: ${totalSheets}`, 15, 27);
-  let y = 37;
-  doc.setFontSize(10);
-  doc.text('Resumen por tipo de lámina', 15, y);
-  y += 6;
+  doc.text('OPTIMIZACIÓN DE CORTE DE LÁMINA', 15, 24);
+  doc.setTextColor(...dark);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.text(project, 15, 45, { maxWidth: 180 });
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
+  doc.text(`Ensamble: ${assembly}`, 15, 54, { maxWidth: 180 });
+  doc.text(`Elaboró: ${prepared}`, 15, 60);
+  doc.text(`Fecha de emisión: ${new Date().toLocaleString()}`, 15, 66);
+  doc.setFillColor(...light);
+  doc.roundedRect(15, 73, 180, 20, 3, 3, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(`Láminas requeridas: ${totalSheets}`, 22, 85);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`Piezas procesadas: ${files.filter(f => f.geom && f.qty > 0).reduce((a, f) => a + f.qty, 0)}`, 112, 85);
+  let y = 105;
+  doc.setTextColor(...blue);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('RESUMEN DE MATERIAL REQUERIDO', 15, y);
+  y += 8;
+  doc.setTextColor(255, 255, 255);
+  doc.setFillColor(...blue);
+  doc.rect(15, y - 5, 180, 8, 'F');
+  doc.setFontSize(8);
+  doc.text('MATERIAL / CALIBRE / MEDIDA', 18, y);
+  doc.text('CANT.', 130, y);
+  doc.text('USO', 151, y);
+  doc.text('MERMA', 174, y);
+  y += 8;
+  doc.setTextColor(...dark);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
   for (const r of rows) {
-    doc.text(`${defLabel(r.def)}: ${r.sheets.length} lámina(s) · Uso ${r.sheets.length ? r.util.toFixed(1) + '%' : '—'} · Merma ${r.sheets.length ? r.waste.toFixed(1) + '%' : '—'}`, 18, y);
-    y += 5;
+    if (y > 275) { doc.addPage(); y = 22; }
+    doc.text(defLabel(r.def), 18, y, { maxWidth: 105 });
+    doc.text(String(r.sheets.length), 132, y);
+    doc.text(r.sheets.length ? r.util.toFixed(1) + '%' : '—', 151, y);
+    doc.text(r.sheets.length ? r.waste.toFixed(1) + '%' : '—', 174, y);
+    doc.setDrawColor(220, 228, 235);
+    doc.line(15, y + 3, 195, y + 3);
+    y += 9;
   }
   if (result.unplaced.length) {
     y += 3;
@@ -296,15 +384,23 @@ function exportPDF() {
       pageNo++;
       const { W, H } = sh.def;
       const scale = Math.min(180 / W, 180 / H);
-      const y0 = 35;
+      const y0 = 42;
       const X = (x) => 15 + x * scale;
       const Y = (yy) => y0 + (H - yy) * scale;
 
+      doc.setFillColor(...blue);
+      doc.rect(0, 0, 210, 27, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
-      doc.text(`${defLabel(sh.def)} — Lámina ${i + 1} de ${r.sheets.length}`, 15, 20);
+      doc.text(`${project} — ${defLabel(sh.def)}`, 15, 12, { maxWidth: 180 });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(`Lámina ${i + 1} de ${r.sheets.length} · Ensamble: ${assembly}`, 15, 19, { maxWidth: 180 });
+      doc.setTextColor(...dark);
       doc.setFontSize(9);
       const sheetUse = sh.items.reduce((a, it) => a + it.area, 0) / (W * H) * 100;
-      doc.text(`Uso: ${sheetUse.toFixed(1)}% | Merma: ${Math.max(0, 100 - sheetUse).toFixed(1)}% | Margen: ${sh.def.margin} mm | Gap: ${sh.def.gap} mm`, 15, 26);
+      doc.text(`Uso: ${sheetUse.toFixed(1)}% | Merma: ${Math.max(0, 100 - sheetUse).toFixed(1)}% | Margen: ${sh.def.margin} mm | Gap: ${sh.def.gap} mm`, 15, 33);
 
       doc.setLineWidth(0.4);
       doc.rect(X(0), Y(H), W * scale, H * scale);
@@ -315,34 +411,47 @@ function exportPDF() {
           const a = p[k], b = p[(k + 1) % p.length];
           doc.line(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]));
         }
+        for (const hole of (it.holes || [])) {
+          for (let k = 0; k < hole.length; k++) {
+            const a = hole[k], b = hole[(k + 1) % hole.length];
+            doc.line(X(a[0]), Y(a[1]), X(b[0]), Y(b[1]));
+          }
+        }
         const [cx, cy] = centroid(p);
-        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
         doc.text(String(sh.items.indexOf(it) + 1), X(cx), Y(cy), { align: 'center' });
       }
 
-      const counts = {};
-      for (const it of sh.items) counts[it.name] = (counts[it.name] || 0) + 1;
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
-      let ty = y0 + H * scale + 10;
-      doc.text('Piezas en esta lámina:', 15, ty);
-      for (const [name, n] of Object.entries(counts)) {
+      let ty = y0 + H * scale + 9;
+      doc.text('IDENTIFICACIÓN DE PIEZAS', 15, ty);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      sh.items.forEach((it, index) => {
         ty += 5;
-        doc.text(`${name}: ${n}`, 20, ty);
-      }
+        if (ty > 285) { doc.addPage(); ty = 20; }
+        doc.text(`${index + 1}. ${it.name}`, 18, ty, { maxWidth: 175 });
+      });
+      doc.setTextColor(110, 120, 130);
+      doc.setFontSize(7);
+      doc.text(`Generado por Nesting · ${new Date().toLocaleDateString()}`, 15, 290);
     });
   }
   // Si no hubo láminas, deja un aviso en la primera página
   if (pageNo === 0) doc.text('Sin láminas calculadas.', 15, 60);
 
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
-  doc.save(`nesting_${stamp}.pdf`);
+  const safeProject = project.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
+  doc.save(`nesting_${safeProject}_${stamp}.pdf`);
 }
 
 // ---------- Finalizar / descartar ----------
 $('finalize').addEventListener('click', () => {
   if (!result) return;
   exportPDF();
-  clearAll('Cálculo finalizado. El PDF se descargó y todo se borró de la memoria. Puedes crear un nuevo nesting.');
+  $('pdfStatus').textContent = 'PDF generado. El cálculo permanece guardado en esta sesión; puedes seguir editando y recalcular.';
 });
 
 $('discard').addEventListener('click', () => {
@@ -356,6 +465,10 @@ function clearAll(message) {
   defs = [];
   result = null;
   $('dxf').value = '';
+  $('projectName').value = '';
+  $('assemblyName').value = '';
+  $('preparedBy').value = '';
+  $('pdfStatus').textContent = '';
   $('fileMsg').textContent = '';
   $('pieces').replaceChildren();
   $('piecesBox').hidden = true;

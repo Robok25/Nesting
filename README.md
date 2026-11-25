@@ -7,19 +7,18 @@ Aplicación web para calcular cuántas láminas necesitas para cortar un conjunt
 1. **Selecciona los DXF** a nestear (se listan por nombre).
 2. **Asigna a cada pieza** cantidad, material y calibre.
 3. **Define los tipos de lámina**: material, calibre, ancho, alto, margen, gap y rotaciones (0° y 90°, o 0°, 45° y 90°). Puedes agregar varios tipos. Cada pieza solo se acomoda en las láminas de su mismo material y calibre.
-4. **Calcula.** El resultado muestra cuántas láminas se usan de cada tipo, su aprovechamiento y un dibujo de cada lámina.
-5. **Finalizar cálculo y generar PDF** descarga el PDF y borra todo de la memoria. **Descartar y crear nuevo** borra todo sin PDF.
+4. **Calcula** desde el apartado de láminas. El resultado muestra cuántas láminas se usan de cada tipo, su aprovechamiento y un dibujo de cada lámina.
+5. En resultados puedes **guardar el PDF** sin borrar el cálculo. **Crear nuevo cálculo** limpia los datos de la sesión.
 
 ## Entrada DXF
 
 - Unidades: milímetros.
-- Se leen LINE, LWPOLYLINE, CIRCLE y ARC. Las entidades en la capa `BEND` se ignoran.
+- Se leen LINE, LWPOLYLINE, POLYLINE, CIRCLE y ARC. Las entidades en la capa `BEND` se ignoran.
 - Cada archivo debe contener una sola pieza.
-- Los agujeros se restan del área del material, pero el acomodo usa solo el contorno exterior (conservador).
+- Los barrenos y recortes interiores cerrados se detectan, se descuentan del área y se consideran como espacios libres al comprobar colisiones durante el acomodo. También se muestran en la vista previa y el PDF.
 
 Limitaciones de la versión 1:
 - Los arcos "bulge" dentro de polilíneas se aproximan con segmentos rectos.
-- Las POLYLINE del formato antiguo no se leen; expórtalas como LWPOLYLINE.
 - La heurística bottom-left no garantiza el mejor aprovechamiento posible.
 
 ## Privacidad
