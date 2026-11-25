@@ -128,7 +128,7 @@ function renderPieces() {
         el('td', {}, [dropdown(f.calibre, CALIBRE_OPTIONS, (v) => (f.calibre = v), 'Calibre...', disabled)]),
         el('td', { textContent: f.error ? 'Error: ' + f.error : 'OK', className: f.error ? 'err' : 'ok' }),
         el('td', {}, [el('button', { type: 'button', className: 'danger small', textContent: 'Quitar', onclick: () => {
-          if (confirm(`¿Quitar el archivo "${f.name}" de la lista?`)) { files = files.filter((item) => item !== f); renderPieces(); }
+          if (confirm(`¿Quitar el archivo "${f.name}" de la lista?`)) { files = files.filter((item) => item !== f); renderPieces(); updateUnitsUI(); }
         } })]),
       ])
     );
@@ -368,6 +368,7 @@ function exportPDF() {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text(`Piezas procesadas: ${files.filter(f => f.geom && f.qty > 0).reduce((a, f) => a + f.qty, 0)}`, 112, 85);
+  doc.text(`Unidades de trabajo: ${unitLabel()}`, 22, 90);
   let y = 105;
   doc.setTextColor(...blue);
   doc.setFont('helvetica', 'bold');
