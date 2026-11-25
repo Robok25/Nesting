@@ -32,6 +32,14 @@ let unitMode = 'mm'; // La unidad es única para todos los DXF y láminas de est
 const unitLabel = () => unitMode === 'in' ? 'in' : 'mm';
 const areaUnitLabel = () => unitMode === 'in' ? 'in²' : 'mm²';
 const unitToMm = () => unitMode === 'in' ? 25.4 : 1;
+// Muestra u oculta la capa de carga con el texto de progreso
+const statusBox = {
+  set textContent(t) {
+    $('loading').hidden = !t;
+    $('loadingText').textContent = t || '';
+  },
+};
+
 const keyOf = (m, c) => `${m.trim().toUpperCase()}|${c.trim().toUpperCase()}`;
 const defLabel = (d) => `${d.material.trim()} · ${d.calibre.trim()} · ${d.W} × ${d.H} ${unitLabel()}`;
 
@@ -117,7 +125,7 @@ $('dxf').addEventListener('change', async (e) => {
       if (!answer) { cancelled++; continue; }
       previous = files[index];
     }
-    $('fileMsg').textContent = `Leyendo ${name}…`;
+    statusBox.textContent = `Leyendo ${name}…`;
     await new Promise((r) => setTimeout(r, 0));
     let entry;
     try {
@@ -249,11 +257,11 @@ $('calc').addEventListener('click', async () => {
       const gdefs = defs
         .filter((d) => keyOf(d.material, d.calibre) === k)
         .map((d) => ({ ...d, angles: parseAngles(d.angles) }));
-      $('status').textContent = `Acomodando ${k.split('|').join(' · ')}…`;
+      statusBox.textContent = `Acomodando ${k.split('|').join(' · ')}…`;
       const r = await nestGroup({
         pieces: pcs,
         defs: gdefs,
-        onProgress: (i, t) => ($('status').textContent = `${k.split('|').join(' · ')}: pieza ${i} de ${t}`),
+        onProgress: (i, t) => (statusBox.textContent = `${k.split('|').join(' · ')}: pieza ${i} de ${t}`),
       });
       result.sections.push(...r.sheets.map((s) => s));
       result.unplaced.push(...r.unplaced.map((n) => `${n} (${k.split('|').join(' · ')})`));
@@ -261,7 +269,7 @@ $('calc').addEventListener('click', async () => {
     renderResult();
   } finally {
     $('calc').disabled = false;
-    $('status').textContent = '';
+    statusBox.textContent = '';
   }
 });
 
@@ -281,12 +289,9 @@ function renderResult() {
   const out = $('results');
   out.replaceChildren();
   const ctl = el('div', { className: 'label-controls' });
-  const range = el('input', { type: 'range', min: 0.5, max: 1.5, step: 0.1, value: labelScale });
-  range.addEventListener('change', () => { labelScale = parseFloat(range.value); renderResult(); });
   const chk = el('input', { type: 'checkbox', checked: showLabels });
   chk.addEventListener('change', () => { showLabels = chk.checked; renderResult(); });
   ctl.append(
-    el('label', {}, [el('span', { textContent: 'Tamaño de números (se ajusta a cada pieza)' }), range]),
     el('label', { className: 'inline' }, [chk, el('span', { textContent: 'Mostrar números' })])
   );
   out.append(ctl);
@@ -373,7 +378,25 @@ function sheetSVG(sh) {
 
 // ---------- PDF ----------
 // Página 1: datos generales y resumen. Páginas siguientes: una por lámina con plano y lista.
-function exportPDF() {
+let logoCache = null;
+async function getLogoData() {
+  if (logoCache) return logoCache;
+  try {
+    const blob = await (await fetch('./icons/logo.png')).blob();
+    logoCache = await new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.readAsDataURL(blob);
+    });
+  } catch (e) {
+    logoCache = null;
+  }
+  return logoCache;
+}
+
+async function exportPDF() {
+  statusBox.textContent = 'Generando PDF…';
+  const logo = await getLogoData();
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const rows = summaryRows();
@@ -402,13 +425,13 @@ function exportPDF() {
     while (s.length > 1 && doc.getTextWidth(s + '…') > w) s = s.slice(0, -1);
     return s + '…';
   };
-  const band = (title, sub) => {
+  const band = (title, sub, tw = CW) => {
     doc.setFillColor(...blue);
     doc.rect(0, 0, PW, 26, 'F');
     setText(13, 'bold', [255, 255, 255]);
-    doc.text(fit(title, CW), M, 11);
+    doc.text(fit(title, tw), M, 11);
     setText(8.5, 'normal', [255, 255, 255]);
-    doc.text(fit(sub, CW), M, 19);
+    doc.text(fit(sub, tw), M, 19);
   };
   const newPage = (title, sub) => {
     doc.addPage();
@@ -448,7 +471,13 @@ function exportPDF() {
   };
 
   // ---------- Página 1: datos generales ----------
-  band('REPORTE DE NESTING', 'Optimización de corte de lámina');
+  band('REPORTE DE NESTING', 'Optimización de corte de lámina', CW - 34);
+  if (logo) {
+    // Logo solo en la primera hoja
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(PW - M - 30, 1, 30, 24, 2, 2, 'F');
+    doc.addImage(logo, 'PNG', PW - M - 28, 3, 26, 21.1);
+  }
   let y = 38;
   setText(16, 'bold', dark);
   doc.text(fit(project, CW), M, y);
@@ -543,14 +572,39 @@ function exportPDF() {
 
       const labelY = 35 + infoLines.length * 4 + 5;
       const top = labelY + 4;
-      const n = sh.items.length;
-      // Lista en 4 a 6 columnas para que nunca genere hojas extra
-      let listCols = 6;
-      for (const c of [4, 5, 6]) {
-        if (BOTTOM - top - (Math.ceil(n / c) * 6 + 14) - 14 >= 90) { listCols = c; break; }
+      // Lista en columnas con nombre completo: se elige el espacio mínimo que quepa
+      const flowList = (cols, areaH, force = false) => {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        const textW = CW / cols - 9;
+        const out = [];
+        let col = 0, y = 0;
+        for (let i = 0; i < sh.items.length; i++) {
+          const lines = doc.splitTextToSize(sh.items[i].name, textW);
+          const h = lines.length * 3.6 + 2.6;
+          if (y + h > areaH) {
+            if (col + 1 >= cols) {
+              if (!force) return null;
+            } else {
+              col++;
+              y = 0;
+            }
+          }
+          out.push({ idx: i, col, y, lines });
+          y += h;
+        }
+        return { cols, items: out };
+      };
+      let layout = null, areaH = 0;
+      for (const ah of [30, 45, 60, 75, 95]) {
+        for (const cols of [3, 4, 5, 6]) {
+          const l = flowList(cols, ah);
+          if (l) { layout = l; areaH = ah; break; }
+        }
+        if (layout) break;
       }
-      const listH = Math.ceil(n / listCols) * 6 + 14;
-      const maxH = Math.max(40, BOTTOM - top - listH - 14);
+      if (!layout) { areaH = 95; layout = flowList(6, 95, true); }
+      const maxH = Math.max(40, BOTTOM - top - areaH - 20);
       const k = Math.min(CW / W, maxH / H); // mm por unidad de trabajo
       const X = (x) => M + x * k;
       const Y = (yy) => top + (H - yy) * k;
@@ -584,22 +638,20 @@ function exportPDF() {
         doc.text(String(idx + 1), X(cx), Y(cy) + fsPt * 0.124, { align: 'center' });
       });
 
-      // Piezas utilizadas en columnas
-      const listY = top + H * k + 10;
+      // Piezas utilizadas: nombre completo, en columnas
+      const listY = top + H * k + 12;
       setText(9.5, 'bold', blue);
       doc.text('PIEZAS UTILIZADAS', M, listY);
-      const colW = CW / listCols;
-      sh.items.forEach((it, idx) => {
-        const col = idx % listCols;
-        const row = Math.floor(idx / listCols);
+      const colW = CW / layout.cols;
+      layout.items.forEach(({ idx, col, y, lines }) => {
         const x = M + col * colW;
-        const yy = listY + 7 + row * 6;
+        const yy = listY + 7 + y;
         doc.setFillColor(...blue);
-        doc.roundedRect(x, yy - 3.6, 5, 4.6, 0.8, 0.8, 'F');
+        doc.roundedRect(x, yy - 3.4, 5, 4.4, 0.8, 0.8, 'F');
         setText(7, 'bold', [255, 255, 255]);
-        doc.text(String(idx + 1), x + 2.5, yy - 0.3, { align: 'center' });
+        doc.text(String(idx + 1), x + 2.5, yy - 0.2, { align: 'center' });
         setText(7.5, 'normal', dark);
-        doc.text(fit(it.name, colW - 9), x + 7, yy);
+        doc.text(lines, x + 7, yy);
       });
     });
   }
@@ -616,6 +668,7 @@ function exportPDF() {
   const stampFile = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const safeProject = project.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
   doc.save(`nesting_${safeProject}_${stampFile}.pdf`);
+  statusBox.textContent = '';
 }
 
 // ---------- Exportar DXF del nesting ----------
@@ -634,12 +687,16 @@ function exportDXF() {
     ['LABELS', 3],
   ];
   let dxf = '';
+  // Formato R12 (AC1009): el más compatible con AutoCAD y otros programas
   dxf += pair(0, 'SECTION') + pair(2, 'HEADER');
-  dxf += pair(9, '$ACADVER') + pair(1, 'AC1015');
+  dxf += pair(9, '$ACADVER') + pair(1, 'AC1009');
   dxf += pair(9, '$INSUNITS') + pair(70, unitMode === 'in' ? 1 : 4);
   dxf += pair(9, '$MEASUREMENT') + pair(70, unitMode === 'in' ? 0 : 1);
   dxf += pair(0, 'ENDSEC');
   dxf += pair(0, 'SECTION') + pair(2, 'TABLES');
+  dxf += pair(0, 'TABLE') + pair(2, 'LTYPE') + pair(70, 1);
+  dxf += pair(0, 'LTYPE') + pair(2, 'CONTINUOUS') + pair(70, 0) + pair(3, 'Solid line') + pair(72, 65) + pair(73, 0) + pair(40, 0);
+  dxf += pair(0, 'ENDTAB');
   dxf += pair(0, 'TABLE') + pair(2, 'LAYER') + pair(70, layers.length);
   for (const [name, color] of layers) {
     dxf += pair(0, 'LAYER') + pair(2, name) + pair(70, 0) + pair(62, color) + pair(6, 'CONTINUOUS');
@@ -647,15 +704,17 @@ function exportDXF() {
   dxf += pair(0, 'ENDTAB') + pair(0, 'ENDSEC');
   dxf += pair(0, 'SECTION') + pair(2, 'ENTITIES');
 
+  const finite = (pts) => pts.every(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
   const addPolyline = (points, layer, offsetX = 0) => {
-    if (!points || points.length < 3) return;
-    dxf += pair(0, 'LWPOLYLINE') + pair(8, layer) + pair(90, points.length) + pair(70, 1);
+    if (!points || points.length < 3 || !finite(points)) return;
+    dxf += pair(0, 'POLYLINE') + pair(8, layer) + pair(66, 1) + pair(10, 0) + pair(20, 0) + pair(30, 0) + pair(70, 1);
     for (const [x, y] of points) {
-      dxf += pair(10, (x + offsetX).toFixed(6));
-      dxf += pair(20, y.toFixed(6));
+      dxf += pair(0, 'VERTEX') + pair(8, layer) + pair(10, (x + offsetX).toFixed(6)) + pair(20, y.toFixed(6)) + pair(30, 0);
     }
+    dxf += pair(0, 'SEQEND') + pair(8, layer);
   };
   const addText = (x, y, height, value) => {
+    if (![x, y, height].every(Number.isFinite)) return;
     dxf += pair(0, 'TEXT') + pair(8, 'LABELS');
     dxf += pair(10, x.toFixed(6)) + pair(20, y.toFixed(6)) + pair(30, 0);
     dxf += pair(40, height.toFixed(6)) + pair(1, cleanText(value)) + pair(50, 0);

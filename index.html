@@ -9,6 +9,10 @@
   <link rel="icon" href="./icons/icon-192.png" type="image/png">
   <style>
     [hidden] { display: none !important; }
+    .overlay { position:fixed; inset:0; background:rgba(11,31,51,.6); display:grid; place-items:center; z-index:50; }
+    .overlay-box { background:#fff; color:#0b1f33; padding:22px 26px; border-radius:12px; text-align:center; font-weight:600; min-width:220px; box-shadow:0 6px 24px rgba(0,0,0,.25); }
+    .spinner { width:44px; height:44px; margin:0 auto 12px; border:5px solid #dce5ed; border-top-color:#ff7a1a; border-radius:50%; animation:spin .9s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
     body { font-family: system-ui, sans-serif; margin: 0; padding: 16px; background: #f4f6f8; color: #222; max-width: 1200px; margin-inline: auto; }
     h1 { font-size: 1.4rem; margin: 0 0 12px; }
     h2 { font-size: 1.1rem; margin: 0 0 10px; }
@@ -123,7 +127,8 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <div id="errBox" hidden style="position:fixed;left:8px;right:8px;bottom:8px;z-index:99;background:#7a1212;color:#fff;padding:10px 12px;border-radius:8px;font-size:.85rem;white-space:pre-wrap"></div>
+  <div id="loading" hidden class="overlay"><div class="overlay-box"><div class="spinner"></div><div id="loadingText"></div></div></div>
+<div id="errBox" hidden style="position:fixed;left:8px;right:8px;bottom:8px;z-index:99;background:#7a1212;color:#fff;padding:10px 12px;border-radius:8px;font-size:.85rem;white-space:pre-wrap"></div>
   <script>
     window.addEventListener('error', (e) => {
       const b = document.getElementById('errBox');
@@ -131,6 +136,6 @@
       b.textContent = 'Error en la app: ' + e.message + ' (línea ' + e.lineno + '). Cierra la app y vuelve a abrirla; si sigue, mándame este texto.';
     });
   </script>
-  <script type="module" src="./js/app.js?v=7"></script>
+  <script type="module" src="./js/app.js?v=8"></script>
 </body>
 </html>
