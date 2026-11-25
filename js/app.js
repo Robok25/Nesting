@@ -609,6 +609,9 @@ function exportDXF() {
   const pair = (code, value) => `${code}\r\n${value}\r\n`;
   const fmt = (n) => Number.isFinite(n) ? Number(n).toFixed(6) : '0';
   const layers = [['0', 7], ['SHEETS', 5], ['PARTS', 5], ['HOLES', 1], ['LABELS', 3]];
+  const sheetGap = Math.max(unitMode === 'in' ? 4 : 100, ...result.sections.map((sh) => sh.def.gap * 10));
+  const drawingWidth = result.sections.reduce((sum, sh, i) => sum + sh.def.W + (i ? sheetGap : 0), 0);
+  const drawingHeight = Math.max(...result.sections.map((sh) => sh.def.H + (unitMode === 'in' ? 1 : 25)));
   let dxf = '';
 
   dxf += pair(0, 'SECTION') + pair(2, 'HEADER');
@@ -616,6 +619,14 @@ function exportDXF() {
   dxf += pair(9, '$LUNITS') + pair(70, 2);
   dxf += pair(9, '$LUPREC') + pair(70, 4);
   dxf += pair(9, '$INSBASE') + pair(10, 0) + pair(20, 0) + pair(30, 0);
+  dxf += pair(9, '$EXTMIN') + pair(10, 0) + pair(20, 0) + pair(30, 0);
+  dxf += pair(9, '$EXTMAX') + pair(10, fmt(drawingWidth)) + pair(20, fmt(drawingHeight)) + pair(30, 0);
+  dxf += pair(9, '$LIMMIN') + pair(10, 0) + pair(20, 0);
+  dxf += pair(9, '$LIMMAX') + pair(10, fmt(drawingWidth)) + pair(20, fmt(drawingHeight));
+  dxf += pair(9, '$CLAYER') + pair(8, '0');
+  dxf += pair(9, '$TEXTSTYLE') + pair(7, 'STANDARD');
+  dxf += pair(9, '$LTSCALE') + pair(40, 1);
+  dxf += pair(9, '$CECOLOR') + pair(62, 256);
   // R12 no define $INSUNITS; se conserva la unidad como comentario DXF
   // y las coordenadas permanecen 1:1 en mm o pulgadas.
   dxf += pair(999, `UNIDADES DEL DIBUJO: ${unitMode === 'in' ? 'PULGADAS' : 'MILIMETROS'} (1 unidad = 1 ${unitMode === 'in' ? 'in' : 'mm'})`);
@@ -661,7 +672,6 @@ function exportDXF() {
   };
 
   const project = cleanText($('projectName').value) || 'Proyecto';
-  const sheetGap = Math.max(unitMode === 'in' ? 4 : 100, ...result.sections.map((sh) => sh.def.gap * 10));
   let offsetX = 0;
   result.sections.forEach((sh, sheetIndex) => {
     const { W, H } = sh.def;
@@ -688,12 +698,12 @@ function exportDXF() {
   const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
   const safeProject = project.replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
   const fileName = `nesting_${safeProject}_${unitMode}_${stamp}.dxf`;
-  const blob = new Blob([dxf], { type: 'application/octet-stream' });
+  const blob = new Blob([dxf], { type: 'image/vnd.dxf' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
   link.download = fileName;
-  link.type = 'application/dxf';
+  link.type = 'image/vnd.dxf';
   link.style.display = 'none';
   document.body.append(link);
   link.click();
