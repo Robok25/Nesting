@@ -64,3 +64,11 @@ icons/icon.svg        ícono
 ## Licencia
 
 MIT. Ver `LICENSE`.
+
+
+## Mejoras de optimización y exportación
+
+- El cálculo muestra una pantalla de bloqueo mientras trabaja y reporta el avance por pieza.
+- Las piezas se ordenan por tamaño de su envolvente exterior (área, lado mayor y lado menor), no por orden de carga.
+- La vista previa conserva una altura fija; la lista de piezas se distribuye en columnas cuando hay espacio. Los identificadores se escalan según el tamaño de cada pieza y no llevan fondo blanco.
+- La exportación genera DXF ASCII R12 (AC1009) con entidades POLYLINE/VERTEX, capas SHEETS, PARTS, HOLES y LABELS, contornos de lámina, piezas y huecos. Las coordenadas se exportan a escala 1:1; la unidad queda indicada en un comentario DXF porque R12 no tiene el campo moderno INSUNITS.
