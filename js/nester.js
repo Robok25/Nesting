@@ -1,6 +1,9 @@
-// Motor de nesting: heurística bottom-left sobre candidatos que "tocan" piezas ya colocadas.
-// Se ejecuta por grupo (material + calibre). Cada grupo usa las láminas definidas para ese grupo.
-// Los barrenos y recortes interiores son huecos utilizables: se consideran para colisiones y posiciones candidatas.
+// Motor de nesting: heurística bottom-left con índice espacial y posiciones candidatas.
+// Se ejecuta por grupo (material + calibre). Las piezas se comparan por su contorno exterior:
+// los agujeros no permiten anidar otra pieza (criterio conservador).
+const EPS = 1e-9;
+// Cuántas piezas recientes se usan como referencia para generar posiciones (equilibrio velocidad/precisión)
+const RECENT = 60;
 
 export function bbox(p) {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -24,13 +27,13 @@ export function normalize(p) {
   return p.map(([x, y]) => [x - b.minX, y - b.minY]);
 }
 
-function translate(p, dx, dy) {
-  return p.map(([x, y]) => [x + dx, y + dy]);
-}
-
 export function centroid(p) {
   const n = p.length;
   return [p.reduce((s, q) => s + q[0], 0) / n, p.reduce((s, q) => s + q[1], 0) / n];
+}
+
+function translate(p, dx, dy) {
+  return p.map(([x, y]) => [x + dx, y + dy]);
 }
 
 function rectGap(a, b) {
@@ -81,74 +84,8 @@ export function polyDistance(A, B) {
   return d;
 }
 
-function pointInMaterial(pt, shape) {
-  return inside(pt, shape.outer) && !(shape.holes || []).some((h) => inside(pt, h));
-}
-
-function boundaryLoops(shape) {
-  return [shape.outer, ...(shape.holes || [])];
-}
-
-function shapesOverlap(A, B) {
-  const aLoops = boundaryLoops(A), bLoops = boundaryLoops(B);
-  for (const a of aLoops) for (const b of bLoops) {
-    for (let i = 0; i < a.length; i++) {
-      for (let j = 0; j < b.length; j++) {
-        if (segInter(a[i], a[(i + 1) % a.length], b[j], b[(j + 1) % b.length])) return true;
-      }
-    }
-  }
-  if (A.outer.some((p) => pointInMaterial(p, B))) return true;
-  if (B.outer.some((p) => pointInMaterial(p, A))) return true;
-  return false;
-}
-
-function boundaryDistance(A, B) {
-  let d = Infinity;
-  for (const a of boundaryLoops(A)) for (const b of boundaryLoops(B)) {
-    for (let i = 0; i < a.length; i++) {
-      const a1 = a[i], a2 = a[(i + 1) % a.length];
-      for (let j = 0; j < b.length; j++) {
-        const b1 = b[j], b2 = b[(j + 1) % b.length];
-        d = Math.min(d, segDist(a1, b1, b2), segDist(a2, b1, b2), segDist(b1, a1, a2), segDist(b2, a1, a2));
-        if (d === 0) return 0;
-      }
-    }
-  }
-  return d;
-}
-
-function collides(cand, bb, items, g) {
-  for (const it of items) {
-    if (rectGap(bb, it.bb) >= g) continue;
-    const existing = { outer: it.poly, holes: it.holes || [] };
-    if (shapesOverlap(cand, existing) || boundaryDistance(cand, existing) < g) return true;
-  }
-  return false;
-}
-
-// Variantes (rotaciones normalizadas) de una pieza para una definición de lámina.
-function variantsFor(inst, def) {
-  const key = def.angles.join(',');
-  if (!inst.cache.has(key)) {
-    inst.cache.set(
-      key,
-      def.angles.map((a) => {
-        const rotatedOuter = rotate(inst.outer, a);
-        const bounds = bbox(rotatedOuter);
-        const poly = rotatedOuter.map(([x, y]) => [x - bounds.minX, y - bounds.minY]);
-        const holes = (inst.holes || []).map((h) =>
-          rotate(h, a).map(([x, y]) => [x - bounds.minX, y - bounds.minY])
-        );
-        return { angle: a, poly, holes, bb: bbox(poly) };
-      })
-    );
-  }
-  return inst.cache.get(key);
-}
-
-// Muestra de vértices (máximo 10) para generar posiciones "pegadas" vértice con vértice.
-function sampleVerts(poly, max = 10) {
+// Muestra de vértices para generar posiciones "pegadas" vértice con vértice.
+function sampleVerts(poly, max = 6) {
   if (poly.length <= max) return poly;
   const step = poly.length / max;
   const out = [];
@@ -156,61 +93,147 @@ function sampleVerts(poly, max = 10) {
   return out;
 }
 
-function firstFreePosition(sh, v) {
-  const { W, H, margin, g } = sh.ctx;
-  const xs = [margin], ys = [margin];
-  const cands = [];
-  for (const it of sh.items) {
-    xs.push(it.bb.maxX + g, it.bb.minX - v.bb.maxX - g, it.bb.minX);
-    ys.push(it.bb.maxY + g, it.bb.minY - v.bb.maxY - g, it.bb.minY);
-    for (const hole of (it.holes || [])) {
-      const hb = bbox(hole);
-      xs.push(hb.minX + g);
-      ys.push(hb.minY + g);
+// Variantes (rotaciones) de una pieza para una definición de lámina.
+function variantsFor(inst, def) {
+  const key = def.id + ':' + def.angles.join(',');
+  if (!inst.cache.has(key)) {
+    inst.cache.set(
+      key,
+      def.angles.map((a) => {
+        const rot = rotate(inst.outer, a);
+        const b = bbox(rot);
+        const poly = rot.map(([x, y]) => [x - b.minX, y - b.minY]);
+        const holes = inst.holes.map((h) => translate(rotate(h, a), -b.minX, -b.minY));
+        return { angle: a, poly, holes, bb: bbox(poly) };
+      })
+    );
+  }
+  return inst.cache.get(key);
+}
+
+// ---------- Índice espacial de la lámina ----------
+function newSheet(def) {
+  const cs = Math.max(10, Math.min(def.W, def.H) / 25);
+  return {
+    def,
+    ctx: { W: def.W, H: def.H, margin: def.margin, g: Math.max(def.gap, 0.01) },
+    items: [],
+    grid: new Map(),
+    cs,
+    used: 0,
+    fail: new Set(), // piezas que ya no caben aquí (las láminas solo se llenan, nunca se vacían)
+  };
+}
+
+function cellRange(bb, cs) {
+  return [Math.floor(bb.minX / cs), Math.floor(bb.maxX / cs), Math.floor(bb.minY / cs), Math.floor(bb.maxY / cs)];
+}
+
+function addItem(sh, pl) {
+  const idx = sh.items.length;
+  sh.items.push(pl);
+  sh.used += pl.area;
+  const [i0, i1, j0, j1] = cellRange(pl.bb, sh.cs);
+  for (let i = i0; i <= i1; i++) {
+    for (let j = j0; j <= j1; j++) {
+      const key = i * 100003 + j;
+      let list = sh.grid.get(key);
+      if (!list) { list = []; sh.grid.set(key, list); }
+      list.push(idx);
     }
   }
-  // Posiciones donde un vértice de la pieza toca un vértice de una pieza colocada
-  const pv = sampleVerts(v.poly);
-  for (const it of sh.items) {
-    for (const [ax, ay] of sampleVerts(it.poly)) {
-      for (const [px, py] of pv) {
-        const x = ax - px, y = ay - py;
-        cands.push([x + g, y], [x, y + g], [x + g, y + g], [x - g, y], [x, y - g]);
+}
+
+function nearItems(sh, bb, g) {
+  const [i0, i1, j0, j1] = cellRange(
+    { minX: bb.minX - g, maxX: bb.maxX + g, minY: bb.minY - g, maxY: bb.maxY + g },
+    sh.cs
+  );
+  // Marca de visita por índice para no repetir piezas que ocupan varias celdas
+  sh.stamp = (sh.stamp || 0) + 1;
+  if (!sh.seen || sh.seen.length < sh.items.length) sh.seen = new Int32Array(sh.items.length + 64);
+  const out = [];
+  for (let i = i0; i <= i1; i++) {
+    for (let j = j0; j <= j1; j++) {
+      const list = sh.grid.get(i * 100003 + j);
+      if (!list) continue;
+      for (const idx of list) {
+        if (sh.seen[idx] !== sh.stamp) { sh.seen[idx] = sh.stamp; out.push(idx); }
       }
     }
   }
-  const X = [...new Set(xs)].sort((a, b) => a - b);
-  const Y = [...new Set(ys)].sort((a, b) => a - b);
-  const all = [];
-  for (const y of Y) for (const x of X) all.push([x, y]);
-  for (const c of cands) all.push(c);
-  all.sort((p, q) => (p[1] - q[1]) || (p[0] - q[0]));
-  for (const [x, y] of all) {
-    if (x < margin || y < margin) continue;
-    if (x + v.bb.maxX > W - margin || y + v.bb.maxY > H - margin) continue;
-    const bb = { minX: x, minY: y, maxX: x + v.bb.maxX, maxY: y + v.bb.maxY };
-    let hit = false;
-    for (const it of sh.items) {
-      if (rectGap(bb, it.bb) >= g) continue;
-      const candidate = { outer: translate(v.poly, x, y), holes: v.holes.map((h) => translate(h, x, y)) };
-      if (collides(candidate, bb, [it], g)) { hit = true; break; }
-    }
-    if (!hit) return { x, y };
+  return out;
+}
+
+// ¿Cabe la pieza con su esquina inferior izquierda en (x, y)?
+function feasible(sh, v, x, y) {
+  const { W, H, margin, g } = sh.ctx;
+  if (x < margin - EPS || y < margin - EPS) return false;
+  if (x + v.bb.maxX > W - margin + EPS || y + v.bb.maxY > H - margin + EPS) return false;
+  const bb = { minX: x, minY: y, maxX: x + v.bb.maxX, maxY: y + v.bb.maxY };
+  let cand = null;
+  for (const idx of nearItems(sh, bb, g)) {
+    const it = sh.items[idx];
+    if (rectGap(bb, it.bb) >= g) continue;
+    if (!cand) cand = translate(v.poly, x, y);
+    if (polyDistance(cand, it.poly) < g) return false;
   }
-  return null;
+  return true;
+}
+
+const before = (a, b) => a.y < b.y - EPS || (Math.abs(a.y - b.y) < EPS && a.x < b.x);
+
+// Posición más baja (y), luego más a la izquierda (x), que cumple las distancias.
+function findPosition(sh, v) {
+  const { W, H, margin, g } = sh.ctx;
+  const xs = new Set([margin]), ys = new Set([margin]);
+  const refs = sh.items.length > RECENT ? sh.items.slice(-RECENT) : sh.items;
+  for (const it of refs) {
+    const b = it.bb;
+    xs.add(b.maxX + g); xs.add(b.minX - v.bb.maxX - g); xs.add(b.minX);
+    ys.add(b.maxY + g); ys.add(b.minY - v.bb.maxY - g); ys.add(b.minY);
+  }
+  const X = [...xs].filter((x) => x >= margin - EPS && x <= W - margin - v.bb.maxX + EPS).sort((a, b) => a - b);
+  const Y = [...ys].filter((y) => y >= margin - EPS && y <= H - margin - v.bb.maxY + EPS).sort((a, b) => a - b);
+
+  let best = null;
+  outer: for (const y of Y) {
+    for (const x of X) {
+      if (feasible(sh, v, x, y)) { best = { x, y }; break outer; }
+    }
+  }
+
+  // Posiciones donde un vértice de la pieza toca un vértice de una pieza colocada
+  const pv = sampleVerts(v.poly);
+  const vc = [];
+  for (const it of refs) {
+    for (const [ax, ay] of sampleVerts(it.poly)) {
+      for (const [px, py] of pv) {
+        const x0 = ax - px, y0 = ay - py;
+        vc.push(
+          { x: x0 + g, y: y0 }, { x: x0, y: y0 + g }, { x: x0 + g, y: y0 + g },
+          { x: x0 - g, y: y0 }, { x: x0, y: y0 - g }
+        );
+      }
+    }
+  }
+  vc.sort((p, q) => (p.y - q.y) || (p.x - q.x));
+  for (const c of vc) {
+    if (best && !before(c, best)) break;
+    if (feasible(sh, v, c.x, c.y)) { best = { x: c.x, y: c.y }; break; }
+  }
+  return best;
 }
 
 function bestPlacement(sh, inst) {
   let best = null;
   for (const v of variantsFor(inst, sh.def)) {
-    const pos = firstFreePosition(sh, v);
+    const pos = findPosition(sh, v);
     if (!pos) continue;
-    if (!best || pos.y < best.y - 1e-9 || (Math.abs(pos.y - best.y) < 1e-9 && pos.x < best.x)) {
-      best = { ...pos, v };
-    }
+    if (!best || before(pos, best.pos)) best = { pos, v };
   }
   if (!best) return null;
-  const { x, y, v } = best;
+  const { x, y } = best.pos, v = best.v;
   return {
     name: inst.name,
     area: inst.area,
@@ -221,8 +244,8 @@ function bestPlacement(sh, inst) {
   };
 }
 
-// pieces: [{ name, outer, area, qty }]   defs: [{ id, W, H, margin, gap, angles }]
-// Devuelve sheets: [{ def, items }] y unplaced: [nombres de piezas que no caben].
+// pieces: [{ name, outer, holes, area, qty }]   defs: [{ id, W, H, margin, gap, angles }]
+// Devuelve sheets: [{ def, items }] y unplaced: nombres de piezas que no caben.
 export async function nestGroup({ pieces, defs, onProgress }) {
   const instances = [];
   for (const pc of pieces) {
@@ -230,44 +253,39 @@ export async function nestGroup({ pieces, defs, onProgress }) {
       instances.push({ name: pc.name, area: pc.area, outer: pc.outer, holes: pc.holes || [], cache: new Map() });
     }
   }
-  // Piezas grandes primero: normalmente mejora el aprovechamiento.
+  // Piezas grandes primero, sin importar el orden en que se subieron
   instances.sort((a, b) => b.area - a.area);
 
   const sheets = [];
   const unplaced = [];
+  let last = performance.now();
   for (let i = 0; i < instances.length; i++) {
     const inst = instances[i];
     let placed = false;
 
     for (const sh of sheets) {
+      if (sh.fail.has(inst.name)) continue;
+      if (inst.area > sh.ctx.W * sh.ctx.H - sh.used) { sh.fail.add(inst.name); continue; }
       const pl = bestPlacement(sh, inst);
-      if (pl) {
-        sh.items.push(pl);
-        placed = true;
-        break;
-      }
+      if (pl) { addItem(sh, pl); placed = true; break; }
+      sh.fail.add(inst.name);
     }
 
     if (!placed) {
       for (const def of defs) {
-        const sh = {
-          def,
-          ctx: { W: def.W, H: def.H, margin: def.margin, g: Math.max(def.gap, 0.01) },
-          items: [],
-        };
+        const sh = newSheet(def);
         const pl = bestPlacement(sh, inst);
-        if (pl) {
-          sh.items.push(pl);
-          sheets.push(sh);
-          placed = true;
-          break;
-        }
+        if (pl) { addItem(sh, pl); sheets.push(sh); placed = true; break; }
       }
     }
 
     if (!placed) unplaced.push(inst.name);
     if (onProgress) onProgress(i + 1, instances.length);
-    await new Promise((r) => setTimeout(r, 0));
+    // Cede el control al navegador para que no se congele
+    if (performance.now() - last > 40) {
+      await new Promise((r) => setTimeout(r, 0));
+      last = performance.now();
+    }
   }
-  return { sheets, unplaced };
+  return { sheets: sheets.map((s) => ({ def: s.def, items: s.items })), unplaced };
 }
